@@ -1,0 +1,6 @@
+{
+  "name": "NightVerse",
+  "description": "Premium, futuristic full-stack creator platform for sharing photos, videos, blogs, and real-time custom tag analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

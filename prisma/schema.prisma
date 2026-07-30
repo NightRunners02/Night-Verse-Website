@@ -1,0 +1,238 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+  USER
+}
+
+enum ContentStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum SourceType {
+  LAPTOP
+  MOBILE
+  URL
+}
+
+model User {
+  id             String         @id @default(uuid())
+  email          String         @unique
+  username       String         @unique
+  passwordHash   String
+  role           Role           @default(USER)
+  isSuspended    Boolean        @default(false)
+  emailVerified  Boolean        @default(false)
+  rememberMeToken String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  profile        Profile?
+  blogs          Blog[]
+  photos         Photo[]
+  videos         Video[]
+  notifications  Notification[] @relation("UserNotifications")
+  comments       Comment[]
+  likes          Like[]
+  adminLogs      AdminLog[]     @relation("AdminUser")
+
+  // Social Relations
+  followers      Follower[]     @relation("Following")
+  following      Follower[]     @relation("Follower")
+}
+
+model Profile {
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fullName     String
+  bio          String?  @db.Text
+  dateOfBirth  DateTime?
+  gender       String?
+  location     String?
+  website      String?
+  instagram    String?
+  facebook     String?
+  tiktok       String?
+  twitter      String?
+  linkedin     String?
+  avatarUrl    String?
+  bannerUrl    String?
+  updatedAt    DateTime @updatedAt
+}
+
+model Blog {
+  id          String        @id @default(uuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String        @db.Text
+  content     String        @db.Text
+  thumbnailUrl String
+  tags        String[]
+  status      ContentStatus @default(PENDING)
+  rejectReason String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  comments    Comment[]     @relation("BlogComments")
+  likes       Like[]        @relation("BlogLikes")
+  reports     Report[]      @relation("BlogReports")
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Photo {
+  id          String        @id @default(uuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?       @db.Text
+  sourceType  SourceType    @default(URL)
+  url         String
+  tags        String[]
+  status      ContentStatus @default(PENDING)
+  rejectReason String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  comments    Comment[]     @relation("PhotoComments")
+  likes       Like[]        @relation("PhotoLikes")
+  reports     Report[]      @relation("PhotoReports")
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Video {
+  id          String        @id @default(uuid())
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  description String?       @db.Text
+  sourceType  SourceType    @default(URL)
+  url         String
+  thumbnailUrl String?
+  duration    Float?        // In seconds
+  resolution  String?       // E.g., "1080p", "4K"
+  tags        String[]
+  status      ContentStatus @default(PENDING)
+  rejectReason String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  comments    Comment[]     @relation("VideoComments")
+  likes       Like[]        @relation("VideoLikes")
+  reports     Report[]      @relation("VideoReports")
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Tag {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  usageCount  Int      @default(0)
+  growthRate  Float    @default(0.0) // growth rating
+  mostActiveUserId String?
+  lastUsedAt  DateTime @default(now())
+  createdAt   DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation("UserNotifications", fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Report {
+  id          String   @id @default(uuid())
+  contentType String   // "blog", "photo", "video"
+  contentId   String
+  reporterId  String
+  reason      String   @db.Text
+  isResolved  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  blog        Blog?    @relation("BlogReports", fields: [contentId], references: [id], onDelete: Cascade, map: "Report_Blog_fk")
+  photo       Photo?   @relation("PhotoReports", fields: [contentId], references: [id], onDelete: Cascade, map: "Report_Photo_fk")
+  video       Video?   @relation("VideoReports", fields: [contentId], references: [id], onDelete: Cascade, map: "Report_Video_fk")
+}
+
+model Comment {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  content     String   @db.Text
+  createdAt   DateTime @default(now())
+
+  // Polymorphic-like associations
+  blogId      String?
+  blog        Blog?    @relation("BlogComments", fields: [blogId], references: [id], onDelete: Cascade)
+  photoId     String?
+  photo       Photo?   @relation("PhotoComments", fields: [photoId], references: [id], onDelete: Cascade)
+  videoId     String?
+  video       Video?   @relation("VideoComments", fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@index([blogId])
+  @@index([photoId])
+  @@index([videoId])
+}
+
+model Like {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  blogId    String?
+  blog      Blog?    @relation("BlogLikes", fields: [blogId], references: [id], onDelete: Cascade)
+  photoId   String?
+  photo     Photo?   @relation("PhotoLikes", fields: [photoId], references: [id], onDelete: Cascade)
+  videoId   String?
+  video     Video?   @relation("VideoLikes", fields: [videoId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, blogId])
+  @@unique([userId, photoId])
+  @@unique([userId, videoId])
+}
+
+model Follower {
+  id          String   @id @default(uuid())
+  followerId  String
+  follower    User     @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followingId String
+  following   User     @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+}
+
+model AdminLog {
+  id        String   @id @default(uuid())
+  adminId   String
+  admin     User     @relation("AdminUser", fields: [adminId], references: [id], onDelete: Cascade)
+  action    String
+  targetType String  // "user", "content", "system"
+  targetId  String?
+  details   String?  @db.Text
+  createdAt DateTime @default(now())
+}
