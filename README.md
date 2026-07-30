@@ -1,5 +1,11 @@
 # 🌌 NightVerse – Platform Sosial & Kreator Digital Modern
 
+![React](https://img.shields.io/badge/react-%2320232a.svg?style=for-the-badge&logo=react&logoColor=%2361DAFB)
+![TypeScript](https://img.shields.io/badge/typescript-%23007ACC.svg?style=for-the-badge&logo=typescript&logoColor=white)
+![TailwindCSS](https://img.shields.io/badge/tailwindcss-%2338B2AC.svg?style=for-the-badge&logo=tailwind-css&logoColor=white)
+![Vite](https://img.shields.io/badge/vite-%23646CFF.svg?style=for-the-badge&logo=vite&logoColor=white)
+![Framer Motion](https://img.shields.io/badge/Framer-Black?style=for-the-badge&logo=framer&logoColor=blue)
+
 Selamat datang di **NightVerse**, sebuah platform ekosistem sosial dan kreator digital yang dirancang untuk memberikan pengalaman interaktif, imersif, dan aman bagi seluruh penggunanya. NightVerse bukan sekadar media sosial biasa, melainkan sebuah ruang komprehensif di mana kreator dapat memamerkan karya mereka, pengguna dapat berinteraksi secara mulus, dan administrator dapat mengelola komunitas dengan alat ukur yang sangat mumpuni.
 
 Aplikasi ini dibangun menggunakan teknologi web terkini (React, TypeScript, Vite, Tailwind CSS) untuk memastikan performa yang cepat, antarmuka yang modern, serta dukungan penuh untuk pengalaman lintas perangkat (desktop dan mobile).
