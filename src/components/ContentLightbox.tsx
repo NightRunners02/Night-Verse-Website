@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { X, Heart, MessageSquare, CornerDownRight, Check, UserPlus, Eye, Clock, Monitor, AlertTriangle, RefreshCw, Globe, Plus, Star, Bookmark, Share2, Link, Download, MoreHorizontal, ChevronLeft, ChevronRight, Maximize2, Minimize2, Info, Users, Play, Pause, Volume2, VolumeX, Settings, SquareStack, SkipForward, SkipBack, Flag, Layers } from "lucide-react";
+import { X, Heart, MessageSquare, CornerDownRight, Check, UserPlus, Eye, Clock, Monitor, AlertTriangle, RefreshCw, Globe, Plus, Star, Bookmark, Share2, Link, Download, MoreHorizontal, ChevronLeft, ChevronRight, Maximize2, Minimize2, Info, Users, Play, Pause, Volume2, VolumeX, Settings, SquareStack, SkipForward, SkipBack, Flag, Layers, Lock, Unlock, MessageSquareOff } from "lucide-react";
 import { useAppState } from "../context/AppState.js";
 import { motion, AnimatePresence } from "motion/react";
 import { db } from "../lib/db.js";
@@ -42,9 +42,10 @@ export const ContentLightbox: React.FC = () => {
   type LightboxTab = 'related' | 'write' | 'list';
   const [activeTab, setActiveTab] = useState<LightboxTab>('related');
 
-  // Mobile tab state
-  type MobileTab = 'info' | 'comments' | 'creator' | 'related';
-  const [mobileTab, setMobileTab] = useState<MobileTab>('info');
+  // Detail tab state (Info, Komentar, Kreator, Terkait)
+  type DetailTab = 'info' | 'comments' | 'creator' | 'related';
+  const [mobileTab, setMobileTab] = useState<DetailTab>('info');
+  const [desktopTab, setDesktopTab] = useState<DetailTab>('info');
 
   // detect related items
   const [relatedItems, setRelatedItems] = useState<any[]>([]);
@@ -53,6 +54,7 @@ export const ContentLightbox: React.FC = () => {
   // Video control states
   const videoRef = useRef<HTMLVideoElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [activeEmbedIndex, setActiveEmbedIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [currentTime, setCurrentTime] = useState(0);
@@ -88,26 +90,30 @@ export const ContentLightbox: React.FC = () => {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [focusedContent, relatedItems]);
 
-  // Load related items
+  // Load related items (exclude private content from public circulation)
   useEffect(() => {
     if (!focusedContent) return;
     const { type, item } = focusedContent;
+    const isOwnerOrAdmin = (entry: any) => entry.visibility !== "private" || (user && (user.id === entry.userId || user.role === "SUPER_ADMIN" || user.role === "ADMIN"));
+    
     let all: any[] = [];
-    if (type === "blog") all = db.blogs.getAll().filter(b => b.status === "APPROVED");
-    if (type === "photo") all = db.photos.getAll().filter(p => p.status === "APPROVED");
-    if (type === "video") all = db.videos.getAll().filter(v => v.status === "APPROVED");
+    if (type === "blog") all = db.blogs.getAll().filter(b => b.status === "APPROVED" && isOwnerOrAdmin(b));
+    if (type === "photo") all = db.photos.getAll().filter(p => p.status === "APPROVED" && isOwnerOrAdmin(p));
+    if (type === "video") all = db.videos.getAll().filter(v => v.status === "APPROVED" && isOwnerOrAdmin(v));
     
     // Sort or filter related (e.g. same category or just recent)
     setRelatedItems(all.filter(i => i.id !== item.id));
-  }, [focusedContent]);
+  }, [focusedContent, user]);
 
   const handleNext = () => {
     if (!focusedContent || relatedItems.length === 0) return;
     const { type, item } = focusedContent;
+    const isOwnerOrAdmin = (entry: any) => entry.visibility !== "private" || (user && (user.id === entry.userId || user.role === "SUPER_ADMIN" || user.role === "ADMIN"));
+    
     let all: any[] = [];
-    if (type === "blog") all = db.blogs.getAll().filter(b => b.status === "APPROVED");
-    if (type === "photo") all = db.photos.getAll().filter(p => p.status === "APPROVED");
-    if (type === "video") all = db.videos.getAll().filter(v => v.status === "APPROVED");
+    if (type === "blog") all = db.blogs.getAll().filter(b => b.status === "APPROVED" && isOwnerOrAdmin(b));
+    if (type === "photo") all = db.photos.getAll().filter(p => p.status === "APPROVED" && isOwnerOrAdmin(p));
+    if (type === "video") all = db.videos.getAll().filter(v => v.status === "APPROVED" && isOwnerOrAdmin(v));
     
     const currentIndex = all.findIndex(i => i.id === item.id);
     if (currentIndex !== -1 && currentIndex < all.length - 1) {
@@ -120,10 +126,12 @@ export const ContentLightbox: React.FC = () => {
   const handlePrev = () => {
     if (!focusedContent || relatedItems.length === 0) return;
     const { type, item } = focusedContent;
+    const isOwnerOrAdmin = (entry: any) => entry.visibility !== "private" || (user && (user.id === entry.userId || user.role === "SUPER_ADMIN" || user.role === "ADMIN"));
+    
     let all: any[] = [];
-    if (type === "blog") all = db.blogs.getAll().filter(b => b.status === "APPROVED");
-    if (type === "photo") all = db.photos.getAll().filter(p => p.status === "APPROVED");
-    if (type === "video") all = db.videos.getAll().filter(v => v.status === "APPROVED");
+    if (type === "blog") all = db.blogs.getAll().filter(b => b.status === "APPROVED" && isOwnerOrAdmin(b));
+    if (type === "photo") all = db.photos.getAll().filter(p => p.status === "APPROVED" && isOwnerOrAdmin(p));
+    if (type === "video") all = db.videos.getAll().filter(v => v.status === "APPROVED" && isOwnerOrAdmin(v));
     
     const currentIndex = all.findIndex(i => i.id === item.id);
     if (currentIndex > 0) {
@@ -199,6 +207,7 @@ export const ContentLightbox: React.FC = () => {
     const { type, item } = focusedContent;
     
     // Reset report flows upon focus changes
+    setActiveEmbedIndex(0);
     setIsReporting(false);
     setReportReason("");
     setReportNotes("");
@@ -279,6 +288,44 @@ export const ContentLightbox: React.FC = () => {
   const isDocBlog = type === "blog";
   const isDocPhoto = type === "photo";
   const isDocVideo = type === "video";
+
+  const isPrivate = item.visibility === "private" || (item.visibility as any) === "PRIVATE";
+  const isOwner = Boolean(user && user.id === item.userId);
+  const isAdmin = Boolean(user && (user.role === "SUPER_ADMIN" || user.role === "ADMIN" || user.role === "MODERATOR"));
+  const canAccess = !isPrivate || isOwner || isAdmin;
+  const isCommentsMuted = (item.engagement === "muted") || (item.engagement as any === "MUTED") || (item.allowComments === false);
+
+  if (!canAccess) {
+    return (
+      <AnimatePresence>
+        <motion.div 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-xl p-6"
+        >
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 max-w-md w-full shadow-2xl text-center flex flex-col items-center">
+            <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-5 shadow-lg shadow-amber-950/20">
+              <Lock className="w-8 h-8" />
+            </div>
+            <span className="text-[10px] font-mono font-bold text-amber-400 uppercase tracking-widest px-2.5 py-1 bg-amber-950/40 border border-amber-900/50 rounded-full mb-3">
+              Private Content
+            </span>
+            <h3 className="text-xl font-black text-white font-space mb-2">Akses Terbatas</h3>
+            <p className="text-xs text-slate-400 leading-relaxed font-sans mb-6">
+              Konten ini diatur sebagai <strong>Private</strong> dan hanya dapat diakses oleh pemiliknya.
+            </p>
+            <button
+              onClick={() => setFocusedContent(null)}
+              className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-lg shadow-purple-950/30 cursor-pointer"
+            >
+              Kembali ke Explore Feed
+            </button>
+          </div>
+        </motion.div>
+      </AnimatePresence>
+    );
+  }
 
   const handleLike = () => {
     if (!user || !token) {
@@ -709,6 +756,14 @@ export const ContentLightbox: React.FC = () => {
 
   const submitComment = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (isCommentsMuted) {
+      triggerToast("Komentar Dinonaktifkan 🔇", "Fitur komentar telah dinonaktifkan untuk postingan ini.", "error");
+      return;
+    }
+    if (!canAccess) {
+      triggerToast("Akses Ditolak 🔒", "Anda tidak memiliki izin untuk mengomentari postingan ini.", "error");
+      return;
+    }
     if (!user || !token || !commentText.trim()) return;
 
     const newComment = {
@@ -907,7 +962,7 @@ export const ContentLightbox: React.FC = () => {
     resetControlsTimer();
   };
 
-  const renderMobileTabs = () => {
+  const renderTabNavigation = (currentTab: string, setTab: (tab: any) => void) => {
     const tabs = [
       { id: 'info', label: 'Info', icon: Info },
       { id: 'comments', label: 'Komentar', icon: MessageSquare },
@@ -916,21 +971,99 @@ export const ContentLightbox: React.FC = () => {
     ];
 
     return (
-      <div className="flex p-1 gap-1 bg-slate-900/60 rounded-xl border border-slate-800/80 mb-4 backdrop-blur-xl">
+      <div className="flex p-1 gap-1 bg-slate-900/80 rounded-xl border border-slate-800/80 mb-4 backdrop-blur-xl shrink-0">
         {tabs.map((tab) => (
           <button
             key={tab.id}
-            onClick={() => setMobileTab(tab.id as any)}
-            className={`flex-1 flex flex-col items-center justify-center py-1.5 rounded-lg transition-all active:scale-95 ${
-              mobileTab === tab.id 
-                ? "bg-purple-600 text-white shadow-lg shadow-purple-900/30" 
-                : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200"
+            onClick={() => setTab(tab.id as any)}
+            className={`flex-1 flex flex-col sm:flex-row items-center justify-center gap-1.5 py-2 px-2 rounded-lg transition-all active:scale-95 cursor-pointer ${
+              currentTab === tab.id 
+                ? "bg-purple-600 text-white shadow-lg shadow-purple-900/30 font-bold" 
+                : "text-slate-400 hover:bg-slate-800/50 hover:text-slate-200 font-medium"
             }`}
           >
-            <tab.icon className={`w-3 h-3 mb-0.5 ${mobileTab === tab.id ? "scale-110" : ""}`} />
-            <span className="text-[8px] font-bold tracking-tight">{tab.label}</span>
+            <tab.icon className={`w-3.5 h-3.5 ${currentTab === tab.id ? "scale-110 text-white" : ""}`} />
+            <span className="text-[10px] font-bold tracking-tight">{tab.label}</span>
           </button>
         ))}
+      </div>
+    );
+  };
+
+  const renderMultiVideoEmbedSection = () => {
+    if (!isDocVideo) return null;
+    const allUrls = (item.videoUrls && item.videoUrls.length > 0) ? item.videoUrls : [item.url];
+    if (allUrls.length <= 1) return null;
+
+    return (
+      <div className="w-full mt-6 bg-slate-900/90 border border-purple-500/30 rounded-2xl p-4 shadow-2xl backdrop-blur-md">
+        <div className="flex items-center justify-between mb-3 pb-2.5 border-b border-slate-800">
+          <div className="flex items-center gap-2.5">
+            <div className="w-7 h-7 rounded-xl bg-purple-600/20 border border-purple-500/40 flex items-center justify-center text-purple-400 shrink-0">
+              <Play className="w-3.5 h-3.5 fill-current" />
+            </div>
+            <div>
+              <h4 className="text-xs font-black text-white font-space tracking-tight flex items-center gap-2">
+                More Videos ({allUrls.length})
+                <span className="text-[8px] font-mono font-bold text-purple-400 bg-purple-950/80 px-2 py-0.5 rounded-full border border-purple-900">
+                  {activeEmbedIndex + 1}/{allUrls.length} Active
+                </span>
+              </h4>
+              <p className="text-[10px] text-slate-400 font-sans">
+                Daftar video embed tambahan. Klik untuk mengaktifkan pemutar utama.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-2 max-h-56 overflow-y-auto custom-scrollbar pr-1">
+          {allUrls.map((url: string, index: number) => {
+            const isActive = activeEmbedIndex === index;
+            let domainName = "Video External";
+            try {
+              const parsed = new URL(url);
+              domainName = parsed.hostname.replace("www.", "");
+            } catch (e) {
+              domainName = "Video Ref " + (index + 1);
+            }
+
+            return (
+              <button
+                key={index}
+                onClick={() => setActiveEmbedIndex(index)}
+                className={`flex items-center justify-between p-3 rounded-xl border text-left transition-all cursor-pointer active:scale-95 ${
+                  isActive
+                    ? "bg-purple-600/20 border-purple-500 text-white shadow-lg shadow-purple-950/40 ring-1 ring-purple-500/50"
+                    : "bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
+                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center text-[10px] font-mono font-black shrink-0 ${
+                    isActive ? "bg-purple-600 text-white shadow-md shadow-purple-900/40" : "bg-slate-800 text-slate-400"
+                  }`}>
+                    {index + 1}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-bold truncate flex items-center gap-1.5">
+                      <span>Video Embed #{index + 1}</span>
+                      {isActive && (
+                        <span className="text-[8px] font-mono font-bold uppercase tracking-widest text-purple-300 bg-purple-900/80 px-1.5 py-0.2 rounded border border-purple-700">
+                          Diputar
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[9px] text-slate-500 font-mono truncate">
+                      {domainName} • {url}
+                    </div>
+                  </div>
+                </div>
+                <div className={`p-1.5 rounded-lg shrink-0 ${isActive ? "text-purple-400 bg-purple-500/10" : "text-slate-600"}`}>
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </div>
     );
   };
@@ -979,24 +1112,28 @@ export const ContentLightbox: React.FC = () => {
     }
 
     if (isDocVideo) {
-      if (item.sourceType === "EMBED" || item.sourceType === "Real-time Embed") {
+      const allUrls = (item.videoUrls && item.videoUrls.length > 0) ? item.videoUrls : [item.url];
+      const currentUrl = allUrls[activeEmbedIndex] || allUrls[0] || item.url || "";
+      const isEmbed = item.sourceType === "EMBED" || item.sourceType === "Real-time Embed" || allUrls.length > 1 || currentUrl.includes("youtube.com") || currentUrl.includes("vimeo.com") || currentUrl.includes("youtu.be");
+
+      if (isEmbed) {
+        const iframeSrc = currentUrl.includes("youtube.com/watch?v=") 
+          ? currentUrl.replace("watch?v=", "embed/") 
+          : currentUrl.includes("youtu.be/")
+          ? currentUrl.replace("youtu.be/", "youtube.com/embed/")
+          : currentUrl.includes("vimeo.com/")
+          ? currentUrl.replace("vimeo.com/", "player.vimeo.com/video/")
+          : (currentUrl || undefined);
+
         return (
-          <div className="relative w-full h-full bg-black">
+          <div className="relative w-full h-full bg-black flex flex-col items-center justify-center">
             <iframe
-              src={
-                item.url?.includes("youtube.com/watch?v=") 
-                  ? item.url.replace("watch?v=", "embed/") 
-                  : item.url?.includes("youtu.be/")
-                  ? item.url.replace("youtu.be/", "youtube.com/embed/")
-                  : item.url?.includes("vimeo.com/")
-                  ? item.url.replace("vimeo.com/", "player.vimeo.com/video/")
-                  : (item.url || undefined)
-              }
+              src={iframeSrc}
               className="w-full h-full border-0"
               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
               allowFullScreen
-              title="Embed Player"
-            ></iframe>
+              title={`Embed Player ${activeEmbedIndex + 1}`}
+            />
             {isMobile && (
                <div className="absolute top-4 left-4 z-50">
                   <button onClick={() => setFocusedContent(null)} className="p-2 bg-black/40 backdrop-blur-md rounded-full text-white border border-white/10">
@@ -1190,7 +1327,7 @@ export const ContentLightbox: React.FC = () => {
             onClick={() => setActiveTab('write')}
             className={`flex-1 py-3 text-[9px] font-bold uppercase tracking-widest border-b-2 transition-all ${activeTab === 'write' ? "border-purple-500 text-white bg-white/5" : "border-transparent text-slate-500 hover:text-slate-300"}`}
           >
-            Comments
+            {isCommentsMuted ? "Comments (Muted)" : "Comments"}
           </button>
           <button 
             onClick={() => setActiveTab('list')}
@@ -1200,7 +1337,7 @@ export const ContentLightbox: React.FC = () => {
           </button>
         </div>
 
-        <div className="flex-1 overflow-hidden relative">
+        <div className="flex-1 overflow-y-auto custom-scrollbar relative min-h-0">
           <AnimatePresence mode="wait">
             {activeTab === 'write' && (
               <motion.div 
@@ -1211,7 +1348,33 @@ export const ContentLightbox: React.FC = () => {
                 className="absolute inset-0 flex flex-col"
               >
                 <div className="p-5 flex-1 bg-slate-950/10 overflow-y-auto custom-scrollbar">
-                  {token ? (
+                  {isCommentsMuted ? (
+                    <div className="flex flex-col items-center justify-center h-full text-center p-6 border border-dashed border-rose-900/50 rounded-2xl bg-rose-950/20 space-y-3">
+                      <div className="p-3.5 bg-rose-950/50 rounded-2xl border border-rose-850 text-rose-400">
+                        <MessageSquareOff className="w-8 h-8" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-slate-100 font-space">Comments Disabled</h4>
+                        <p className="text-xs text-slate-400 mt-1 max-w-[280px] leading-relaxed">
+                          Pemilik konten telah menonaktifkan fitur komentar untuk postingan ini. Diskusi tidak dapat dilakukan.
+                        </p>
+                      </div>
+                      <div className="pt-2 flex flex-col sm:flex-row items-center gap-2">
+                        <span className="text-[9px] font-mono font-bold px-2.5 py-1 rounded bg-rose-950/60 text-rose-400 border border-rose-900/60 uppercase tracking-widest">
+                          Engagement: MUTED
+                        </span>
+                        {comments.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setActiveTab('list')}
+                            className="text-[10px] font-bold text-purple-400 hover:text-purple-300 underline font-mono cursor-pointer"
+                          >
+                            Lihat {comments.length} komentar lama
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ) : token ? (
                     <div className="space-y-4">
                       <div className="flex items-center gap-3 mb-2">
                         <img 
@@ -1260,6 +1423,12 @@ export const ContentLightbox: React.FC = () => {
                 className="absolute inset-0 flex flex-col"
               >
                 <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar bg-slate-900/20">
+                  {isCommentsMuted && (
+                    <div className="p-3 bg-rose-950/30 border border-rose-900/50 rounded-xl flex items-center gap-2.5 text-rose-300 text-xs font-mono">
+                      <MessageSquareOff className="w-4 h-4 shrink-0 text-rose-400" />
+                      <span>Komentar dinonaktifkan oleh pemilik konten. Arsip riwayat komentar sebelumnya tetap tersimpan.</span>
+                    </div>
+                  )}
                   {comments.length === 0 ? (
                     <div className="text-center py-20 px-6">
                       <div className="p-4 bg-slate-800/30 rounded-full w-fit mx-auto mb-4 border border-slate-800">
@@ -1504,122 +1673,260 @@ export const ContentLightbox: React.FC = () => {
   const renderDesktopRightPanel = (heightStyle?: React.CSSProperties) => {
     return (
       <div 
-        style={heightStyle || { height: "80vh" }} 
-        className="w-[420px] border-l border-slate-800 flex flex-col bg-slate-900 overflow-hidden shrink-0"
+        style={heightStyle || { height: "85vh" }} 
+        className="w-[440px] border-l border-slate-800 flex flex-col bg-slate-900 overflow-hidden shrink-0"
       >
-        {/* Metadata & Actions */}
-        <div className="p-6 border-b border-slate-800/60 shrink-0">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-3">
-              <img 
-                src={db.users.getById(item.userId)?.profile?.avatarUrl || item.authorAvatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${item.authorName}`} 
-                alt={item.authorName} 
-                className="w-10 h-10 rounded-full border border-slate-700 object-cover shadow-lg hover:border-purple-500 transition-colors cursor-pointer"
-                onClick={() => { setFocusedContent(null); viewProfile(item.userId); }}
-              />
-              <div className="flex flex-col">
+        {/* Header Title & Creator Bar */}
+        <div className="p-5 border-b border-slate-800/60 shrink-0 bg-slate-950/40">
+          <div className="flex items-center gap-3 mb-3 pr-8 min-w-0">
+            <img 
+              src={db.users.getById(item.userId)?.profile?.avatarUrl || item.authorAvatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${item.authorName}`} 
+              alt={item.authorName} 
+              className="w-9 h-9 rounded-full border border-slate-700 object-cover shadow-lg hover:border-purple-500 transition-colors cursor-pointer shrink-0"
+              onClick={() => { setFocusedContent(null); viewProfile(item.userId); }}
+            />
+            <div className="flex flex-col min-w-0 flex-1">
+              <div className="flex items-center gap-2 flex-wrap min-w-0">
                 <span 
-                  className="font-bold text-slate-50 text-sm hover:text-purple-400 transition-colors cursor-pointer"
+                  className="font-bold text-slate-50 text-xs hover:text-purple-400 transition-colors cursor-pointer truncate max-w-[150px]"
+                  title={`@${item.authorName}`}
                   onClick={() => { setFocusedContent(null); viewProfile(item.userId); }}
                 >
                   @{item.authorName}
                 </span>
-                <span className="text-[10px] text-slate-500 font-mono">
-                  {new Date(item.createdAt).toLocaleDateString()}
-                </span>
-              </div>
-            </div>
 
-            {user?.id !== item.userId && (
-              <button 
-                onClick={handleFollow}
-                className={`text-[10px] font-bold py-1.5 px-4 rounded-full transition-all border ${
-                  isFollowing 
-                    ? "bg-slate-800 text-slate-400 border-slate-700"
-                    : "bg-purple-600 text-white border-purple-500 hover:bg-purple-500"
-                }`}
-              >
-                {isFollowing ? "Following" : "Follow"}
-              </button>
-            )}
+                {user?.id !== item.userId && (
+                  <button 
+                    onClick={handleFollow}
+                    className={`text-[9px] font-bold py-0.5 px-2.5 rounded-full transition-all border shrink-0 cursor-pointer active:scale-95 ${
+                      isFollowing 
+                        ? "bg-slate-800 text-slate-400 border-slate-700 hover:bg-slate-750"
+                        : "bg-purple-600 text-white border-purple-500 hover:bg-purple-500 shadow-sm"
+                    }`}
+                  >
+                    {isFollowing ? "Following" : "Follow"}
+                  </button>
+                )}
+              </div>
+              <span className="text-[9px] text-slate-500 font-mono mt-0.5">
+                {new Date(item.createdAt).toLocaleDateString()}
+              </span>
+            </div>
           </div>
 
-          <h3 className="font-extrabold text-slate-100 text-lg font-space leading-tight tracking-tight mb-2">
+          <h3 className="font-extrabold text-slate-100 text-base font-space leading-tight tracking-tight line-clamp-2">
             {item.title}
           </h3>
-          {item.description && (
-            <p className="text-xs text-slate-400 leading-relaxed mb-4 line-clamp-3 font-sans">
-              {item.description}
-            </p>
-          )}
-          
-          <div className="flex flex-wrap gap-1.5 mb-6">
-            {(item.tags || []).map((tag: string, idx: number) => (
-              <span 
-                key={`${tag}-${idx}`} 
-                className="text-[9px] font-bold text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded border border-purple-500/20"
-              >
-                #{tag.toLowerCase()}
-              </span>
-            ))}
-          </div>
-
-          {/* Stats Bar */}
-          <div className="grid grid-cols-4 gap-2 mb-6">
-            {[
-              { icon: Eye, label: item.views || 0, color: "text-purple-400" },
-              { icon: Heart, label: likesCount, color: hasLiked ? "text-rose-500" : "text-slate-500", active: hasLiked, onClick: handleLike },
-              { icon: MessageSquare, label: comments.length, color: "text-slate-500" },
-              { icon: Share2, label: sharesCount, color: "text-slate-500", onClick: handleShare }
-            ].map((stat, i) => (
-              <div 
-                key={i} 
-                onClick={stat.onClick}
-                className={`flex flex-col items-center p-2 rounded-xl bg-slate-950/40 border border-slate-800 transition-colors ${stat.onClick ? "cursor-pointer hover:bg-slate-800/60" : ""}`}
-              >
-                <stat.icon className={`w-3.5 h-3.5 mb-1 ${stat.color} ${stat.active ? "fill-current" : ""}`} />
-                <span className="text-[10px] font-bold text-slate-200 font-mono">{stat.label}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Productivity Actions */}
-          <div className="flex gap-2">
-            <button 
-              onClick={handleFavorite}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                hasFavorited ? "bg-amber-500/20 border-amber-500/50 text-amber-400 shadow-lg shadow-amber-900/10" : "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-750"
-              }`}
-            >
-              <Star className={`w-3.5 h-3.5 ${hasFavorited ? "fill-current" : ""}`} />
-              Fav
-            </button>
-            <button 
-              onClick={handleBookmark}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl border text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
-                hasBookmarked ? "bg-sky-500/20 border-sky-500/50 text-sky-400 shadow-lg shadow-sky-900/10" : "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-750"
-              }`}
-            >
-              <Bookmark className={`w-3.5 h-3.5 ${hasBookmarked ? "fill-current" : ""}`} />
-              Save
-            </button>
-            {!isDocBlog && (
-              <button 
-                onClick={handleDownload}
-                className="p-2.5 rounded-xl border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-750 transition-all cursor-pointer"
-                title="Download"
-              >
-                <Download className="w-4 h-4" />
-              </button>
-            )}
-          </div>
         </div>
 
-        {/* Tabs / Content Section */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-hidden relative">
-            {renderRightPanelContent()}
+        {/* 2. Tab Navigation */}
+        <div className="px-4 pt-4 shrink-0 bg-slate-950/20">
+          {renderTabNavigation(desktopTab, setDesktopTab)}
+        </div>
+
+        {/* 3. Tab Content & 4. Multi-Video Embed Section */}
+        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar space-y-4 flex flex-col justify-between">
+          <div className="space-y-4">
+            <AnimatePresence mode="wait">
+              {desktopTab === 'info' && (
+                <motion.div key="info" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
+                  {item.description && (
+                    <p className="text-xs text-slate-300 leading-relaxed font-sans bg-slate-950/40 p-3.5 rounded-xl border border-slate-800/60">
+                      {item.description}
+                    </p>
+                  )}
+
+                  {/* Stats Bar */}
+                  <div className="grid grid-cols-4 gap-2">
+                    {[
+                      { icon: Eye, label: item.views || 0, color: "text-purple-400" },
+                      { icon: Heart, label: likesCount, color: hasLiked ? "text-rose-500" : "text-slate-500", active: hasLiked, onClick: handleLike },
+                      { icon: MessageSquare, label: comments.length, color: "text-slate-500" },
+                      { icon: Share2, label: sharesCount, color: "text-slate-500", onClick: handleShare }
+                    ].map((stat, i) => (
+                      <div 
+                        key={i} 
+                        onClick={stat.onClick}
+                        className={`flex flex-col items-center p-2 rounded-xl bg-slate-950/40 border border-slate-800 transition-colors ${stat.onClick ? "cursor-pointer hover:bg-slate-800/60" : ""}`}
+                      >
+                        <stat.icon className={`w-3.5 h-3.5 mb-1 ${stat.color} ${stat.active ? "fill-current" : ""}`} />
+                        <span className="text-[10px] font-bold text-slate-200 font-mono">{stat.label}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={handleFavorite}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                        hasFavorited ? "bg-amber-500/20 border-amber-500/50 text-amber-400 shadow-lg shadow-amber-900/10" : "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-750"
+                      }`}
+                    >
+                      <Star className={`w-3.5 h-3.5 ${hasFavorited ? "fill-current" : ""}`} />
+                      Fav
+                    </button>
+                    <button 
+                      onClick={handleBookmark}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
+                        hasBookmarked ? "bg-sky-500/20 border-sky-500/50 text-sky-400 shadow-lg shadow-sky-900/10" : "bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-750"
+                      }`}
+                    >
+                      <Bookmark className={`w-3.5 h-3.5 ${hasBookmarked ? "fill-current" : ""}`} />
+                      Save
+                    </button>
+                    {!isDocBlog && (
+                      <button 
+                        onClick={handleDownload}
+                        className="p-2 rounded-xl border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-750 transition-all cursor-pointer"
+                        title="Download"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
+                    )}
+                    <button 
+                      onClick={handleMore}
+                      className="p-2 rounded-xl border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-750 transition-all cursor-pointer"
+                      title="Report"
+                    >
+                      <Flag className="w-4 h-4 text-rose-400" />
+                    </button>
+                  </div>
+
+                  {/* Tags */}
+                  <div className="flex flex-wrap gap-1.5 pt-2">
+                    {(item.tags || []).map((tag: string, idx: number) => (
+                      <span 
+                        key={`${tag}-${idx}`} 
+                        className="text-[9px] font-bold text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded border border-purple-500/20"
+                      >
+                        #{tag.toLowerCase()}
+                      </span>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+
+              {desktopTab === 'comments' && (
+                <motion.div key="comments" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
+                  {/* Input or Muted */}
+                  {isCommentsMuted ? (
+                    <div className="p-4 bg-rose-950/20 border border-rose-900/40 rounded-2xl text-rose-300 text-xs font-mono">
+                      <MessageSquareOff className="w-4 h-4 inline mr-2 text-rose-400" />
+                      Komentar dinonaktifkan untuk konten ini.
+                    </div>
+                  ) : (
+                    <div className="bg-slate-950/40 p-3 rounded-xl border border-slate-800">
+                      {token ? (
+                        <div className="space-y-2">
+                          <textarea 
+                            placeholder="Tambah komentar..." 
+                            value={commentText}
+                            onChange={(e) => setCommentText(e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-800 rounded-lg p-2.5 text-xs text-white focus:border-purple-500 outline-none resize-none min-h-[70px] font-sans"
+                          />
+                          <div className="flex justify-end">
+                            <button 
+                              onClick={() => submitComment()}
+                              disabled={!commentText.trim()}
+                              className="px-4 py-1.5 bg-purple-600 text-white rounded-lg text-[9px] font-black uppercase tracking-widest disabled:opacity-50 cursor-pointer"
+                            >
+                              Kirim
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-slate-500 text-center py-2 font-mono">Silakan login untuk berkomentar</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Comments List */}
+                  <div className="space-y-2.5">
+                    {comments.length === 0 ? (
+                      <div className="text-center py-10 bg-slate-950/20 rounded-2xl border border-dashed border-slate-800">
+                        <MessageSquare className="w-6 h-6 text-slate-700 mx-auto mb-2" />
+                        <p className="text-[10px] text-slate-500 font-mono uppercase">Belum ada komentar</p>
+                      </div>
+                    ) : (
+                      [...comments].reverse().map((cm) => (
+                        <div key={cm.id} className="bg-slate-950/40 p-3 rounded-xl border border-slate-800/80">
+                          <div className="flex items-[#10141d] gap-2 mb-1.5">
+                            <img src={cm.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${cm.username}`} className="w-6 h-6 rounded-full border border-slate-700" alt="" />
+                            <span className="text-xs font-bold text-slate-200">@{cm.username}</span>
+                            <span className="text-[8px] text-slate-500 font-mono ml-auto">{new Date(cm.createdAt).toLocaleDateString()}</span>
+                          </div>
+                          <p className="text-xs text-slate-300 font-sans leading-relaxed">{cm.content}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </motion.div>
+              )}
+
+              {desktopTab === 'creator' && (
+                <motion.div key="creator" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-4">
+                  <div className="bg-slate-950/40 p-5 rounded-2xl border border-slate-800 text-center flex flex-col items-center">
+                    <img 
+                      src={db.users.getById(item.userId)?.profile?.avatarUrl || item.authorAvatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${item.authorName}`} 
+                      className="w-16 h-16 rounded-2xl border-2 border-purple-500 p-0.5 object-cover mb-3" 
+                      alt="" 
+                    />
+                    <h4 className="text-sm font-black text-white font-space">@{db.users.getById(item.userId)?.username || item.authorName}</h4>
+                    <p className="text-[11px] text-slate-400 mt-1 mb-4 font-sans leading-relaxed">
+                      {db.users.getById(item.userId)?.profile?.bio || "Digital artist & creator in NightVerse platform."}
+                    </p>
+                    <div className="grid grid-cols-2 gap-2 w-full mb-4">
+                      <div className="bg-slate-900 p-3 rounded-xl border border-slate-800">
+                        <span className="block text-sm font-black text-white font-mono">{db.follows.getFollowers(item.userId).length}</span>
+                        <span className="text-[8px] text-slate-500 uppercase tracking-wider font-bold">Followers</span>
+                      </div>
+                      <div className="bg-slate-900 p-3 rounded-xl border border-slate-800">
+                        <span className="block text-sm font-black text-white font-mono">
+                          {[...db.photos.getAll().filter(p => p.userId === item.userId), ...db.videos.getAll().filter(v => v.userId === item.userId)].length}
+                        </span>
+                        <span className="text-[8px] text-slate-500 uppercase tracking-wider font-bold">Collections</span>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => { setFocusedContent(null); viewProfile(item.userId); }}
+                      className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
+                    >
+                      View Full Profile
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+
+              {desktopTab === 'related' && (
+                <motion.div key="related" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="space-y-3">
+                  {relatedItems.length === 0 ? (
+                    <div className="text-center py-10 bg-slate-950/20 rounded-2xl border border-dashed border-slate-800">
+                      <Clock className="w-6 h-6 text-slate-700 mx-auto mb-2" />
+                      <p className="text-[10px] text-slate-500 font-mono uppercase">Tidak ada konten terkait</p>
+                    </div>
+                  ) : (
+                    relatedItems.slice(0, 8).map((ri) => (
+                      <div 
+                        key={ri.id} 
+                        onClick={() => setFocusedContent({ type, item: ri })}
+                        className="flex gap-3 p-2 bg-slate-950/40 hover:bg-slate-800/60 rounded-xl border border-slate-800/60 transition-all cursor-pointer"
+                      >
+                        <img src={ri.thumbnailUrl || ri.url} className="w-20 h-14 rounded-lg object-cover shrink-0 border border-slate-800" alt="" />
+                        <div className="min-w-0 flex-1 flex flex-col justify-center">
+                          <h5 className="text-xs font-bold text-slate-100 truncate">{ri.title}</h5>
+                          <p className="text-[9px] text-slate-400 font-mono">@{ri.authorName}</p>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
+
+          {/* 4. Multi-Video Embed Section (placed BELOW tab content) */}
+          {renderMultiVideoEmbedSection()}
         </div>
       </div>
     );
@@ -1660,12 +1967,32 @@ export const ContentLightbox: React.FC = () => {
               <div className="flex items-center gap-3 mb-6 bg-slate-900/50 p-3 rounded-xl border border-slate-800">
                 <img 
                   src={db.users.getById(item.userId)?.profile?.avatarUrl || item.authorAvatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${item.authorName}`} 
-                  className="w-8 h-8 rounded-full border border-slate-700" 
-                  alt="" 
+                  className="w-9 h-9 rounded-full border border-slate-700 object-cover shrink-0 cursor-pointer" 
+                  alt={item.authorName} 
+                  onClick={() => { setFocusedContent(null); viewProfile(item.userId); }}
                 />
-                <div className="flex-1">
-                  <span className="text-xs font-bold text-slate-200">@{item.authorName}</span>
-                  <span className="block text-[10px] text-slate-500 font-mono">{new Date(item.createdAt).toLocaleDateString()}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span 
+                      className="text-xs font-bold text-slate-200 hover:text-purple-400 transition-colors cursor-pointer truncate max-w-[140px]"
+                      onClick={() => { setFocusedContent(null); viewProfile(item.userId); }}
+                    >
+                      @{item.authorName}
+                    </span>
+                    {user?.id !== item.userId && (
+                      <button 
+                        onClick={handleFollow}
+                        className={`text-[9px] font-bold py-0.5 px-2.5 rounded-full transition-all border shrink-0 cursor-pointer active:scale-95 ${
+                          isFollowing 
+                            ? "bg-slate-800 text-slate-400 border-slate-700" 
+                            : "bg-purple-600 text-white border-purple-500 hover:bg-purple-500"
+                        }`}
+                      >
+                        {isFollowing ? "Following" : "Follow"}
+                      </button>
+                    )}
+                  </div>
+                  <span className="block text-[10px] text-slate-500 font-mono mt-0.5">{new Date(item.createdAt).toLocaleDateString()}</span>
                 </div>
               </div>
 
@@ -1843,7 +2170,7 @@ export const ContentLightbox: React.FC = () => {
           <div className="w-full bg-slate-950 px-4 pt-6 pb-20">
             <div className="max-w-xl mx-auto">
               {/* Tab Navigation */}
-              {renderMobileTabs()}
+              {renderTabNavigation(mobileTab, setMobileTab)}
 
               {/* Tab Content */}
               <AnimatePresence mode="wait">
@@ -1857,9 +2184,44 @@ export const ContentLightbox: React.FC = () => {
                   >
                     {/* Information Card */}
                     <div className="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-4 mb-4">
+                      {/* Creator Row: [Avatar] @username [Follow] \n Date */}
+                      <div className="flex items-center gap-3 mb-3 pb-3 border-b border-slate-800/40">
+                        <img 
+                          src={db.users.getById(item.userId)?.profile?.avatarUrl || item.authorAvatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${item.authorName}`} 
+                          alt={item.authorName} 
+                          className="w-9 h-9 rounded-full border border-slate-700 object-cover shrink-0 cursor-pointer"
+                          onClick={() => { setFocusedContent(null); viewProfile(item.userId); }}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span 
+                              className="font-bold text-slate-100 text-xs hover:text-purple-400 transition-colors cursor-pointer truncate max-w-[140px]"
+                              onClick={() => { setFocusedContent(null); viewProfile(item.userId); }}
+                            >
+                              @{item.authorName}
+                            </span>
+                            {user?.id !== item.userId && (
+                              <button 
+                                onClick={handleFollow}
+                                className={`text-[9px] font-bold py-0.5 px-2.5 rounded-full transition-all border shrink-0 cursor-pointer active:scale-95 ${
+                                  isFollowing 
+                                    ? "bg-slate-800 text-slate-400 border-slate-700"
+                                    : "bg-purple-600 text-white border-purple-500 hover:bg-purple-500"
+                                }`}
+                              >
+                                {isFollowing ? "Following" : "Follow"}
+                              </button>
+                            )}
+                          </div>
+                          <span className="text-[9px] text-slate-500 font-mono block mt-0.5">
+                            {new Date(item.createdAt).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+
                       <div className="flex items-center gap-2.5 mb-2.5">
                         <span className="text-purple-400 font-bold text-[8px] uppercase tracking-[0.2em] px-2 py-0.5 bg-purple-400/10 rounded-full border border-purple-500/20">{item.category || (isDocVideo ? "Video" : "Photo")}</span>
-                        <span className="text-slate-500 text-[8px] font-mono tracking-tighter">Diunggah {new Date(item.createdAt).toLocaleDateString()}</span>
+                        <span className="text-slate-500 text-[8px] font-mono tracking-tighter">ID: #{item.id?.slice(0, 8)}</span>
                       </div>
                       
                       <h1 className="text-lg font-black text-white mb-2.5 leading-tight tracking-tight font-space">{item.title}</h1>
@@ -1885,6 +2247,22 @@ export const ContentLightbox: React.FC = () => {
                         </p>
                       )}
 
+                      {/* Visibility & Engagement Badges Mobile */}
+                      <div className="flex items-center gap-2 mb-3 flex-wrap">
+                        <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border flex items-center gap-1 ${
+                          isPrivate ? "text-amber-400 bg-amber-950/30 border-amber-800/40" : "text-cyan-400 bg-cyan-950/30 border-cyan-800/40"
+                        }`}>
+                          {isPrivate ? <Lock className="w-2.5 h-2.5" /> : <Globe className="w-2.5 h-2.5" />}
+                          {isPrivate ? "Private" : "Public"}
+                        </span>
+                        <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border flex items-center gap-1 ${
+                          isCommentsMuted ? "text-rose-400 bg-rose-950/30 border-rose-800/40" : "text-purple-400 bg-purple-950/30 border-purple-800/40"
+                        }`}>
+                          {isCommentsMuted ? <MessageSquareOff className="w-2.5 h-2.5" /> : <MessageSquare className="w-2.5 h-2.5" />}
+                          {isCommentsMuted ? "Comments Disabled" : "Comments Enabled"}
+                        </span>
+                      </div>
+
                       <div className="flex flex-wrap gap-1.5">
                         {(item.tags || []).map((tag: string, idx: number) => (
                           <span key={idx} className="text-[8px] font-bold text-slate-500 bg-slate-800/50 px-2 py-0.5 rounded-md border border-slate-700/50">
@@ -1907,40 +2285,57 @@ export const ContentLightbox: React.FC = () => {
                     exit={{ opacity: 0, y: -10 }}
                     className="space-y-6"
                   >
-                    {/* Comment Input */}
-                    <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-4 mb-4 shadow-xl">
-                      {token ? (
-                        <div className="flex gap-3">
-                           <img 
-                              src={user?.profile?.avatarUrl || user?.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${user?.username}`} 
-                              className="w-9 h-9 rounded-xl border border-slate-800 object-cover shrink-0" 
-                              alt="Me" 
-                           />
-                           <div className="flex-1 flex flex-col gap-3">
-                              <textarea 
-                                placeholder="Tambah komentar publik..." 
-                                value={commentText}
-                                onChange={(e) => setCommentText(e.target.value)}
-                                className="w-full bg-slate-950/50 border border-slate-800/80 rounded-xl p-3 text-xs text-white focus:border-purple-500 outline-none transition-all resize-none min-h-[80px] font-sans"
-                              />
-                              <div className="flex justify-end">
-                                <button 
-                                  onClick={() => submitComment()}
-                                  disabled={!commentText.trim()}
-                                  className="px-6 py-2 bg-purple-600 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] disabled:opacity-50 shadow-lg shadow-purple-900/30 active:scale-95 transition-transform"
-                                >
-                                  Kirim
-                                </button>
-                              </div>
-                           </div>
+                    {/* Comment Input or Disabled Notice */}
+                    {isCommentsMuted ? (
+                      <div className="bg-rose-950/20 border border-rose-900/40 rounded-3xl p-5 mb-4 shadow-xl flex items-center gap-3.5">
+                        <div className="p-3 bg-rose-950/50 border border-rose-850 rounded-2xl text-rose-400 shrink-0">
+                          <MessageSquareOff className="w-6 h-6" />
                         </div>
-                      ) : (
-                        <div className="text-center py-4">
-                           <Globe className="w-6 h-6 text-slate-700 mx-auto mb-2" />
-                           <p className="text-[10px] text-slate-500 font-mono uppercase tracking-widest">Login untuk berinteraksi</p>
+                        <div>
+                          <div className="flex items-center gap-2 mb-1">
+                            <h4 className="text-xs font-bold text-slate-100 font-space">Comments Disabled</h4>
+                            <span className="text-[8px] font-mono font-bold text-rose-400 bg-rose-950/60 px-1.5 py-0.5 rounded border border-rose-900/60 uppercase">Muted</span>
+                          </div>
+                          <p className="text-[11px] text-slate-400 leading-relaxed font-sans">
+                            Pemilik konten telah menonaktifkan fitur komentar. Arsip diskusi sebelumnya tetap dapat dilihat di bawah.
+                          </p>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    ) : (
+                      <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-4 mb-4 shadow-xl">
+                        {token ? (
+                          <div className="flex gap-3">
+                             <img 
+                                src={user?.profile?.avatarUrl || user?.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${user?.username}`} 
+                                className="w-9 h-9 rounded-xl border border-slate-800 object-cover shrink-0" 
+                                alt="Me" 
+                             />
+                             <div className="flex-1 flex flex-col gap-3">
+                                <textarea 
+                                  placeholder="Tambah komentar publik..." 
+                                  value={commentText}
+                                  onChange={(e) => setCommentText(e.target.value)}
+                                  className="w-full bg-slate-950/50 border border-slate-800/80 rounded-xl p-3 text-xs text-white focus:border-purple-500 outline-none transition-all resize-none min-h-[80px] font-sans"
+                                />
+                                <div className="flex justify-end">
+                                  <button 
+                                    onClick={() => submitComment()}
+                                    disabled={!commentText.trim()}
+                                    className="px-6 py-2 bg-purple-600 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.2em] disabled:opacity-50 shadow-lg shadow-purple-900/30 active:scale-95 transition-transform"
+                                  >
+                                    Kirim
+                                  </button>
+                                </div>
+                             </div>
+                          </div>
+                        ) : (
+                          <div className="text-center py-4">
+                             <Globe className="w-6 h-6 text-slate-700 mx-auto mb-2" />
+                             <p className="text-[10px] text-slate-500 font-mono uppercase tracking-widest">Login untuk berinteraksi</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     {/* Comments List */}
                     <div className="space-y-3 pb-12">
@@ -2088,6 +2483,9 @@ export const ContentLightbox: React.FC = () => {
                   </motion.div>
                 )}
               </AnimatePresence>
+
+              {/* Multi-Video Embed Section (placed BELOW tab content) */}
+              {renderMultiVideoEmbedSection()}
             </div>
           </div>
           {renderMobileReportModal()}
@@ -2135,8 +2533,20 @@ export const ContentLightbox: React.FC = () => {
                   </div>
                 )}
                 
-                <div className="flex items-center gap-3 mb-6">
+                <div className="flex items-center gap-2.5 mb-6 flex-wrap">
                   <span className="text-purple-400 font-bold text-[10px] uppercase tracking-[0.3em] font-space px-3 py-1 bg-purple-400/10 rounded-full border border-purple-500/20">✦ {item.category || "Article"}</span>
+                  <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border flex items-center gap-1 ${
+                    isPrivate ? "text-amber-400 bg-amber-950/30 border-amber-800/40" : "text-cyan-400 bg-cyan-950/30 border-cyan-800/40"
+                  }`}>
+                    {isPrivate ? <Lock className="w-2.5 h-2.5" /> : <Globe className="w-2.5 h-2.5" />}
+                    {isPrivate ? "Private" : "Public"}
+                  </span>
+                  <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border flex items-center gap-1 ${
+                    isCommentsMuted ? "text-rose-400 bg-rose-950/30 border-rose-800/40" : "text-purple-400 bg-purple-950/30 border-purple-800/40"
+                  }`}>
+                    {isCommentsMuted ? <MessageSquareOff className="w-2.5 h-2.5" /> : <MessageSquare className="w-2.5 h-2.5" />}
+                    {isCommentsMuted ? "Comments Disabled" : "Comments Enabled"}
+                  </span>
                   <span className="text-slate-500 text-[10px] font-mono">• {new Date(item.createdAt).toLocaleDateString()}</span>
                   <span className="text-slate-500 text-[10px] font-mono">• {item.views || 0} Readers</span>
                 </div>

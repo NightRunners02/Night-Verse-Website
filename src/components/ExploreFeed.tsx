@@ -26,7 +26,8 @@ import {
   X,
   Video,
   Camera,
-  FileText
+  FileText,
+  MessageSquareOff
 } from "lucide-react";
 import { useAppState } from "../context/AppState.js";
 import { motion, AnimatePresence } from "motion/react";
@@ -228,10 +229,17 @@ const ExploreCard: React.FC<ExploreCardProps> = ({ item, onSelect, onAdminDelete
               <Heart className="w-3 h-3 text-rose-500" /> 
               <span className="font-bold text-slate-300">{item.likesCount || 0}</span>
             </span>
-            <span className="flex items-center gap-1 px-1.5 py-0.5 bg-slate-950/50 border border-slate-850 rounded-lg">
-              <MessageSquare className="w-3 h-3 text-purple-400" /> 
-              <span className="font-bold text-slate-300">{item.comments?.length || 0}</span>
-            </span>
+            {item.engagement === "muted" || item.allowComments === false ? (
+              <span className="flex items-center gap-1 px-1.5 py-0.5 bg-rose-950/40 border border-rose-850 rounded-lg text-rose-400" title="Comments Disabled">
+                <MessageSquareOff className="w-3 h-3 text-rose-400" /> 
+                <span className="font-bold text-[9px] uppercase tracking-wider">Muted</span>
+              </span>
+            ) : (
+              <span className="flex items-center gap-1 px-1.5 py-0.5 bg-slate-950/50 border border-slate-850 rounded-lg">
+                <MessageSquare className="w-3 h-3 text-purple-400" /> 
+                <span className="font-bold text-slate-300">{item.comments?.length || 0}</span>
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -314,10 +322,16 @@ export const ExploreFeed: React.FC = () => {
 
   const loadExplorePayload = () => {
     setIsSyncing(true);
-    // Directly pull from local db state
-    const allBlogs = db.blogs.getAll().filter(b => b.status === "APPROVED").map(b => ({ ...b, itemType: "blog" as const, type: "blog" as const }));
-    const allPhotos = db.photos.getAll().filter(p => p.status === "APPROVED").map(p => ({ ...p, itemType: "photo" as const, type: "photo" as const }));
-    const allVideos = db.videos.getAll().filter(v => v.status === "APPROVED").map(v => ({ ...v, itemType: "video" as const, type: "video" as const }));
+    // Directly pull from local db state - strictly exclude private content from Explore Feed
+    const allBlogs = db.blogs.getAll()
+      .filter(b => b.status === "APPROVED" && b.visibility !== "private" && (b.visibility as any) !== "PRIVATE")
+      .map(b => ({ ...b, itemType: "blog" as const, type: "blog" as const }));
+    const allPhotos = db.photos.getAll()
+      .filter(p => p.status === "APPROVED" && p.visibility !== "private" && (p.visibility as any) !== "PRIVATE")
+      .map(p => ({ ...p, itemType: "photo" as const, type: "photo" as const }));
+    const allVideos = db.videos.getAll()
+      .filter(v => v.status === "APPROVED" && v.visibility !== "private" && (v.visibility as any) !== "PRIVATE")
+      .map(v => ({ ...v, itemType: "video" as const, type: "video" as const }));
     const allTags = db.tags.getAll();
 
     setBlogs(allBlogs);
@@ -433,7 +447,7 @@ export const ExploreFeed: React.FC = () => {
   }, [blogs, photos, videos]); // Re-calculate when content state changes
 
   return (
-    <div className="space-y-6 text-slate-100 font-sans" id="explore-feed-shell">
+    <div className="space-y-6 text-slate-100 font-sans overflow-y-auto custom-scrollbar" id="explore-feed-shell">
       
       {/* Dynamic Aurora Header Banner */}
       <div className="relative overflow-hidden p-6 rounded-3xl bg-slate-900/40 border border-slate-900 shadow-xl backdrop-blur-md">

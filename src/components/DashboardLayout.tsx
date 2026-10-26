@@ -214,7 +214,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
       </aside>
 
       {/* ------------------ Core view container right ------------------ */}
-      <div className="flex-1 min-w-0 flex flex-col min-h-screen relative p-0 md:p-4 bg-slate-950">
+      <div className="flex-1 min-w-0 flex flex-col min-h-screen relative p-0 md:p-4 bg-slate-950 overflow-y-auto custom-scrollbar">
 
         {/* top header navigation dashboard */}
         <header className="h-14 md:h-20 bg-slate-900/40 border-b border-slate-900 md:border md:rounded-3xl p-3 md:p-4 flex items-center justify-between gap-2.5 md:gap-4 sticky top-0 md:top-4 z-40 backdrop-blur-xl mb-0 md:mb-6">
@@ -229,7 +229,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
             </button>
 
             {/* Global Search Input - Collapsible */}
-            <div className={`relative transition-all duration-300 ${isSearchExpanded ? "w-full max-w-[140px] md:max-w-sm" : "w-9 md:w-12 h-9 md:h-12"}`}>
+            <div className={`relative transition-all duration-300 ${isSearchExpanded ? "w-full max-w-[220px] sm:max-w-md md:max-w-lg lg:max-w-xl" : "w-9 md:w-12 h-9 md:h-12"}`}>
               <div className="relative w-full h-full">
                 <button 
                   onClick={() => setIsSearchExpanded(!isSearchExpanded)}
@@ -241,14 +241,14 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
                 
                 <input
                   type="text"
-                  placeholder="Search..."
+                  placeholder="Search creators, works, tags..."
                   value={globalSearchQuery}
                   onChange={(e) => {
                     triggerSearch(e.target.value);
                     setShowSearchDropdown(true);
                   }}
                   onFocus={() => setShowSearchDropdown(true)}
-                  className={`w-full h-full text-[9px] md:text-xs py-1.5 md:py-2.5 pl-9 pr-3 bg-slate-950 rounded-lg md:rounded-2xl border border-slate-850 focus:outline-none focus:border-purple-600 text-slate-100 placeholder-slate-500 font-mono transition-all duration-300 ${isSearchExpanded ? "opacity-100 scale-100 z-10" : "opacity-0 scale-95 pointer-events-none z-0"}`}
+                  className={`w-full h-full text-[10px] md:text-xs py-1.5 md:py-2.5 pl-9 pr-3 bg-slate-950 rounded-lg md:rounded-2xl border border-slate-850 focus:outline-none focus:border-purple-600 text-slate-100 placeholder-slate-500 font-mono transition-all duration-300 ${isSearchExpanded ? "opacity-100 scale-100 z-10" : "opacity-0 scale-95 pointer-events-none z-0"}`}
                   id="global-search-input"
                 />
               </div>
@@ -497,7 +497,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
         </header>
 
         {/* Unified sub-view inject workspace body */}
-        <main className="flex-1 min-w-0" id="dashboard-main-content-workspace">
+        <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden custom-scrollbar" id="dashboard-main-content-workspace">
           {children}
         </main>
 

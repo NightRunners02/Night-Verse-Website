@@ -115,6 +115,8 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   websiteName: "NightVerse",
   logoText: "NIGHTVERSE",
   faviconEmoji: "🌌",
+  faviconUrl: "/favicon.svg",
+  faviconUpdatedAt: 0,
   primaryColor: "purple-600",
   secondaryColor: "cyan-400",
   homepageBanner: "https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&q=80&w=1500",
@@ -132,6 +134,11 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   enableEmailVerification: true,
   enablePushNotifications: false,
   enableRealtimeStream: true,
+  mediaApproval: {
+    photo: true,
+    video: false,
+    blog: true,
+  },
 };
 
 const DEFAULT_USERS: User[] = [
@@ -277,24 +284,45 @@ export const initDB = async (): Promise<void> => {
 export const db = {
   // Helpers
   enrich: {
-    blog: (b: Blog) => ({
-      ...b,
-      likesCount: b.likesCount ?? (b.likedBy?.length ?? 0),
-      likedBy: b.likedBy ?? [],
-      comments: b.comments ?? []
-    }),
-    photo: (p: Photo) => ({
-      ...p,
-      likesCount: p.likesCount ?? (p.likedBy?.length ?? 0),
-      likedBy: p.likedBy ?? [],
-      comments: p.comments ?? []
-    }),
-    video: (v: Video) => ({
-      ...v,
-      likesCount: v.likesCount ?? (v.likedBy?.length ?? 0),
-      likedBy: v.likedBy ?? [],
-      comments: v.comments ?? []
-    })
+    blog: (b: Blog) => {
+      const vis = (b.visibility?.toLowerCase() === "private" ? "private" : "public") as "public" | "private";
+      const eng = (b.engagement?.toLowerCase() === "muted" || b.allowComments === false ? "muted" : "open") as "open" | "muted";
+      return {
+        ...b,
+        visibility: vis,
+        engagement: eng,
+        allowComments: eng === "open",
+        likesCount: b.likesCount ?? (b.likedBy?.length ?? 0),
+        likedBy: b.likedBy ?? [],
+        comments: b.comments ?? []
+      };
+    },
+    photo: (p: Photo) => {
+      const vis = (p.visibility?.toLowerCase() === "private" ? "private" : "public") as "public" | "private";
+      const eng = (p.engagement?.toLowerCase() === "muted" || p.allowComments === false ? "muted" : "open") as "open" | "muted";
+      return {
+        ...p,
+        visibility: vis,
+        engagement: eng,
+        allowComments: eng === "open",
+        likesCount: p.likesCount ?? (p.likedBy?.length ?? 0),
+        likedBy: p.likedBy ?? [],
+        comments: p.comments ?? []
+      };
+    },
+    video: (v: Video) => {
+      const vis = (v.visibility?.toLowerCase() === "private" ? "private" : "public") as "public" | "private";
+      const eng = (v.engagement?.toLowerCase() === "muted" || v.allowComments === false ? "muted" : "open") as "open" | "muted";
+      return {
+        ...v,
+        visibility: vis,
+        engagement: eng,
+        allowComments: eng === "open",
+        likesCount: v.likesCount ?? (v.likedBy?.length ?? 0),
+        likedBy: v.likedBy ?? [],
+        comments: v.comments ?? []
+      };
+    }
   },
 
   // Users
@@ -320,6 +348,19 @@ export const db = {
       return item ? db.enrich.blog(item) : undefined;
     },
     add: (blog: Blog) => {
+      // Backend validation: enforce media approval settings
+      if (blog.status !== "DRAFT") {
+        const settings = db.settings.get();
+        const isAuto = settings.mediaApproval?.blog ?? true;
+        const authorUser = db.users.getById(blog.userId);
+        const isSuperAdmin = authorUser?.role === "SUPER_ADMIN";
+        if (!isSuperAdmin) {
+          blog.status = isAuto ? "APPROVED" : "PENDING";
+        } else {
+          blog.status = "APPROVED";
+        }
+      }
+
       const data = get<Blog[]>(KEYS.BLOGS, []);
       set(KEYS.BLOGS, [blog, ...data]);
       if (blog.status === "APPROVED") {
@@ -377,6 +418,19 @@ export const db = {
       return item ? db.enrich.photo(item) : undefined;
     },
     add: (photo: Photo) => {
+      // Backend validation: enforce media approval settings
+      if (photo.status !== "DRAFT") {
+        const settings = db.settings.get();
+        const isAuto = settings.mediaApproval?.photo ?? true;
+        const authorUser = db.users.getById(photo.userId);
+        const isSuperAdmin = authorUser?.role === "SUPER_ADMIN";
+        if (!isSuperAdmin) {
+          photo.status = isAuto ? "APPROVED" : "PENDING";
+        } else {
+          photo.status = "APPROVED";
+        }
+      }
+
       const data = get<Photo[]>(KEYS.PHOTOS, []);
       set(KEYS.PHOTOS, [photo, ...data]);
       if (photo.status === "APPROVED") {
@@ -434,6 +488,19 @@ export const db = {
       return item ? db.enrich.video(item) : undefined;
     },
     add: (video: Video) => {
+      // Backend validation: enforce media approval settings
+      if (video.status !== "DRAFT") {
+        const settings = db.settings.get();
+        const isAuto = settings.mediaApproval?.video ?? false;
+        const authorUser = db.users.getById(video.userId);
+        const isSuperAdmin = authorUser?.role === "SUPER_ADMIN";
+        if (!isSuperAdmin) {
+          video.status = isAuto ? "APPROVED" : "PENDING";
+        } else {
+          video.status = "APPROVED";
+        }
+      }
+
       const data = get<Video[]>(KEYS.VIDEOS, []);
       set(KEYS.VIDEOS, [video, ...data]);
       if (video.status === "APPROVED") {
@@ -832,9 +899,24 @@ export const db = {
   // Comments
   comments: {
     getByContentId: (contentId: string) => get<Comment[]>(KEYS.COMMENTS, []).filter(c => c.contentId === contentId),
-    add: (comment: Comment) => {
+    add: (comment: Comment): boolean => {
+      // Backend check: prevent comment creation if engagement is muted
+      let targetItem: any = null;
+      if (comment.contentType === "blog") targetItem = db.blogs.get(comment.contentId);
+      else if (comment.contentType === "photo") targetItem = db.photos.get(comment.contentId);
+      else if (comment.contentType === "video") targetItem = db.videos.get(comment.contentId);
+
+      if (targetItem) {
+        const isMuted = targetItem.engagement === "muted" || targetItem.allowComments === false;
+        if (isMuted) {
+          console.warn(`Commenting rejected: engagement is muted for ${comment.contentType} ${comment.contentId}`);
+          return false;
+        }
+      }
+
       const data = get<Comment[]>(KEYS.COMMENTS, []);
       set(KEYS.COMMENTS, [...data, comment]);
+      return true;
     }
   },
 
@@ -889,10 +971,27 @@ export const db = {
 
   // Settings
   settings: {
-    get: () => get<SystemSettings>(KEYS.SYSTEM_SETTINGS, DEFAULT_SYSTEM_SETTINGS),
+    get: () => {
+      const stored = get<SystemSettings>(KEYS.SYSTEM_SETTINGS, DEFAULT_SYSTEM_SETTINGS);
+      const mediaApproval = {
+        photo: stored?.mediaApproval?.photo ?? true,
+        video: stored?.mediaApproval?.video ?? false,
+        blog: stored?.mediaApproval?.blog ?? true,
+      };
+      const faviconUrl = stored?.faviconUrl || "/favicon.svg";
+      const faviconUpdatedAt = stored?.faviconUpdatedAt ?? 0;
+      return { ...DEFAULT_SYSTEM_SETTINGS, ...stored, mediaApproval, faviconUrl, faviconUpdatedAt };
+    },
     save: (updates: Partial<SystemSettings>) => {
-      const current = get<SystemSettings>(KEYS.SYSTEM_SETTINGS, DEFAULT_SYSTEM_SETTINGS);
-      set(KEYS.SYSTEM_SETTINGS, { ...current, ...updates });
+      const current = db.settings.get();
+      const nextSettings: SystemSettings = { 
+        ...current, 
+        ...updates,
+        mediaApproval: updates.mediaApproval 
+          ? { ...current.mediaApproval, ...updates.mediaApproval }
+          : current.mediaApproval
+      };
+      set(KEYS.SYSTEM_SETTINGS, nextSettings);
     }
   },
 

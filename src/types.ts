@@ -53,6 +53,9 @@ export interface User {
   };
 }
 
+export type ContentVisibility = "public" | "private";
+export type ContentEngagement = "open" | "muted";
+
 export interface Comment {
   id: string;
   userId: string;
@@ -75,6 +78,9 @@ export interface Blog {
   thumbnailUrl: string;
   tags: string[];
   status: ContentStatus;
+  visibility?: ContentVisibility | "PUBLIC" | "PRIVATE";
+  engagement?: ContentEngagement | "OPEN" | "MUTED";
+  allowComments?: boolean;
   rejectReason?: string;
   createdAt: string;
   views: number;
@@ -86,6 +92,7 @@ export interface Blog {
   bookmarkedBy?: string[];
   bookmarksCount?: number;
   sharesCount?: number;
+  category?: string;
 }
 
 export interface Photo {
@@ -97,8 +104,12 @@ export interface Photo {
   description: string;
   sourceType: SourceType;
   url: string;
+  thumbnailUrl?: string;
   tags: string[];
   status: ContentStatus;
+  visibility?: ContentVisibility | "PUBLIC" | "PRIVATE";
+  engagement?: ContentEngagement | "OPEN" | "MUTED";
+  allowComments?: boolean;
   rejectReason?: string;
   createdAt: string;
   views: number;
@@ -110,6 +121,7 @@ export interface Photo {
   bookmarkedBy?: string[];
   bookmarksCount?: number;
   sharesCount?: number;
+  category?: string;
 }
 
 export interface Video {
@@ -121,12 +133,16 @@ export interface Video {
   description: string;
   sourceType: SourceType;
   url: string;
+  videoUrls?: string[];
   thumbnailUrl: string;
   duration: number;
   resolution: string;
   aspectRatio?: string;
   tags: string[];
   status: ContentStatus;
+  visibility?: ContentVisibility | "PUBLIC" | "PRIVATE";
+  engagement?: ContentEngagement | "OPEN" | "MUTED";
+  allowComments?: boolean;
   rejectReason?: string;
   createdAt: string;
   views: number;
@@ -138,6 +154,7 @@ export interface Video {
   bookmarkedBy?: string[];
   bookmarksCount?: number;
   sharesCount?: number;
+  category?: string;
 }
 
 export interface Tag {
@@ -182,11 +199,19 @@ export interface Notification {
   targetId?: string;
 }
 
+export interface MediaApprovalSettings {
+  photo: boolean; // ON (true): Automatic Publishing Enabled, OFF (false): Manual Approval Required
+  video: boolean; // ON (true): Automatic Publishing Enabled, OFF (false): Manual Approval Required
+  blog: boolean;  // ON (true): Automatic Publishing Enabled, OFF (false): Manual Approval Required
+}
+
 export interface SystemSettings {
   websiteName: string;
   logoText: string;
   logoUrl?: string;
   faviconEmoji?: string;
+  faviconUrl?: string;
+  faviconUpdatedAt?: number;
   primaryColor: string;
   secondaryColor: string;
   homepageBanner: string;
@@ -204,6 +229,7 @@ export interface SystemSettings {
   enableEmailVerification: boolean;
   enablePushNotifications: boolean;
   enableRealtimeStream: boolean;
+  mediaApproval?: MediaApprovalSettings;
 }
 
 export interface ToastAlert {

@@ -39,7 +39,13 @@ import {
   CheckSquare,
   Square,
   X,
-  ShieldCheck
+  ShieldCheck,
+  Image as ImageIcon,
+  Video,
+  Globe,
+  Upload,
+  RotateCcw,
+  FileCheck
 } from "lucide-react";
 import { useAppState } from "../context/AppState.js";
 import { User, SystemSettings } from "../types.js";
@@ -47,11 +53,26 @@ import { motion } from "motion/react";
 import { DeleteConfirmationModal } from "./DeleteConfirmationModal.js";
 import { RoleBadge } from "./RoleBadge.js";
 import { db } from "../lib/db.js";
+import { validateFaviconFile, DEFAULT_FAVICON_URL } from "../lib/favicon.js";
 
 type AdminTab = "overview" | "users" | "moderation" | "tags" | "reports" | "security" | "settings" | "super-admin" | "badges";
 
 export const AdminWorkspace: React.FC = () => {
-  const { user, token, triggerToast, activeTab, navigateTo, systemSettings, saveSystemSettings, createNotification, followActionCount, triggerDBSync, dbActionCount } = useAppState();
+  const { 
+    user, 
+    token, 
+    triggerToast, 
+    activeTab, 
+    navigateTo, 
+    systemSettings, 
+    saveSystemSettings, 
+    uploadFavicon, 
+    resetFavicon, 
+    createNotification, 
+    followActionCount, 
+    triggerDBSync, 
+    dbActionCount 
+  } = useAppState();
 
   const [activeSubTab, setActiveSubTab] = useState<AdminTab>("overview");
   
@@ -171,6 +192,16 @@ export const AdminWorkspace: React.FC = () => {
 
   // System Settings state mirrors
   const [localSettings, setLocalSettings] = useState<SystemSettings>(systemSettings);
+
+  // Favicon Management state
+  const [stagedFaviconFile, setStagedFaviconFile] = useState<File | null>(null);
+  const [stagedFaviconPreview, setStagedFaviconPreview] = useState<string | null>(null);
+  const [isSavingFavicon, setIsSavingFavicon] = useState(false);
+  const [isResettingFavicon, setIsResettingFavicon] = useState(false);
+
+  useEffect(() => {
+    setLocalSettings(systemSettings);
+  }, [systemSettings]);
 
   // Content deletion modal inside reports
   const [contentToDeleteLog, setContentToDeleteLog] = useState<any | null>(null);
@@ -433,6 +464,139 @@ export const AdminWorkspace: React.FC = () => {
     }
   };
 
+  // Media Approval Policy handlers (Super Admin clearance required)
+  const handleMediaApprovalToggle = (type: "photo" | "video" | "blog") => {
+    if (user?.role !== "SUPER_ADMIN") {
+      triggerToast("Access Denied 🔒", "Hanya Super Admin yang dapat mengubah pengaturan ini.", "error");
+      return;
+    }
+
+    const currentApproval = localSettings.mediaApproval || {
+      photo: true,
+      video: false,
+      blog: true,
+    };
+
+    const nextVal = !currentApproval[type];
+    const updatedApproval = {
+      ...currentApproval,
+      [type]: nextVal,
+    };
+
+    const updatedSettings = {
+      ...localSettings,
+      mediaApproval: updatedApproval,
+    };
+
+    setLocalSettings(updatedSettings);
+
+    // Save directly to database so it persists across reloads (Requirement 8)
+    // and without touching existing content status (Requirement 5)
+    saveSystemSettings({ mediaApproval: updatedApproval });
+    triggerDBSync();
+
+    const typeLabels = { photo: "Photo", video: "Video", blog: "Blog" };
+    triggerToast(
+      `${typeLabels[type]} Approval Updated`,
+      nextVal ? "Automatic Publishing Enabled" : "Manual Approval Required",
+      nextVal ? "success" : "info"
+    );
+  };
+
+  const handleToggleAllMediaApproval = (enabled: boolean) => {
+    if (user?.role !== "SUPER_ADMIN") {
+      triggerToast("Access Denied 🔒", "Hanya Super Admin yang dapat mengubah pengaturan ini.", "error");
+      return;
+    }
+
+    const updatedApproval = {
+      photo: enabled,
+      video: enabled,
+      blog: enabled,
+    };
+
+    const updatedSettings = {
+      ...localSettings,
+      mediaApproval: updatedApproval,
+    };
+
+    setLocalSettings(updatedSettings);
+    saveSystemSettings({ mediaApproval: updatedApproval });
+    triggerDBSync();
+
+    triggerToast(
+      "All Media Approval Policies Updated",
+      enabled ? "Automatic Publishing Enabled for all 3 formats" : "Manual Approval Required for all 3 formats",
+      enabled ? "success" : "info"
+    );
+  };
+
+  const handleFaviconFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (user?.role !== "SUPER_ADMIN") {
+      triggerToast("Akses Ditolak 🔒", "Hanya Super Admin yang dapat mengganti favicon website.", "error");
+      e.target.value = "";
+      return;
+    }
+
+    const validation = validateFaviconFile(file);
+    if (!validation.isValid) {
+      triggerToast("Format File Tidak Valid ⚠️", validation.error || "File tidak memenuhi syarat.", "error");
+      e.target.value = "";
+      return;
+    }
+
+    // Generate local preview
+    const reader = new FileReader();
+    reader.onload = () => {
+      setStagedFaviconFile(file);
+      setStagedFaviconPreview(reader.result as string);
+      triggerToast("Preview Favicon Siap", `File "${file.name}" siap disimpan. Klik Save Changes untuk menerapkan.`, "info");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSaveFaviconChanges = async () => {
+    if (!stagedFaviconFile) return;
+    if (user?.role !== "SUPER_ADMIN") {
+      triggerToast("Akses Ditolak 🔒", "Hanya Super Admin yang dapat menyimpan perubahan favicon.", "error");
+      return;
+    }
+
+    setIsSavingFavicon(true);
+    const result = await uploadFavicon(stagedFaviconFile);
+    setIsSavingFavicon(false);
+
+    if (result.success) {
+      setStagedFaviconFile(null);
+      setStagedFaviconPreview(null);
+    }
+  };
+
+  const handleCancelFaviconStaging = () => {
+    setStagedFaviconFile(null);
+    setStagedFaviconPreview(null);
+    triggerToast("Perubahan Dibatalkan", "Preview favicon telah dibatalkan dan dikembalikan ke favicon aktif.", "info");
+  };
+
+  const handleResetFaviconToDefault = async () => {
+    if (user?.role !== "SUPER_ADMIN") {
+      triggerToast("Akses Ditolak 🔒", "Hanya Super Admin yang dapat mereset favicon.", "error");
+      return;
+    }
+
+    setIsResettingFavicon(true);
+    const success = await resetFavicon();
+    setIsResettingFavicon(false);
+
+    if (success) {
+      setStagedFaviconFile(null);
+      setStagedFaviconPreview(null);
+    }
+  };
+
   const handleSaveWorkspaceSettings = () => {
     saveSystemSettings(localSettings);
     loadAllAdminMetrics();
@@ -561,7 +725,7 @@ export const AdminWorkspace: React.FC = () => {
   );
 
   return (
-    <div className="space-y-6 text-slate-100 font-sans" id="admin-workspace-premium">
+    <div className="space-y-6 text-slate-100 font-sans overflow-y-auto custom-scrollbar" id="admin-workspace-premium">
       
       {/* Dynamic top aurora gradient */}
       <div className="p-6 bg-slate-900/60 border border-slate-850 rounded-3xl relative overflow-hidden backdrop-blur-md">
@@ -2568,6 +2732,577 @@ export const AdminWorkspace: React.FC = () => {
                 <Settings className="w-5 h-5 text-purple-400" /> Platform System Settings
               </h3>
               <p className="text-xs text-slate-400 mt-1">Directly configure core platform parameters, mailing coordinates, asset upload bounds, website names, and SEO titles without editing source files.</p>
+            </div>
+
+            {/* MEDIA APPROVAL SETTINGS (Content Publishing Approval) */}
+            <div className="p-6 bg-slate-900/50 border border-slate-850 rounded-2xl md:rounded-3xl space-y-6">
+              
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] uppercase font-mono tracking-widest text-purple-400 font-black border-l-2 border-purple-500 pl-2">
+                      Media Approval Workflow
+                    </span>
+                    {user.role === "SUPER_ADMIN" ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[9px] font-mono font-bold flex items-center gap-1">
+                        <ShieldCheck className="w-2.5 h-2.5" /> Super Admin Authorized
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[9px] font-mono font-bold flex items-center gap-1">
+                        <Lock className="w-2.5 h-2.5" /> Super Admin Clearance Only
+                      </span>
+                    )}
+                  </div>
+                  <h4 className="text-base font-black font-space text-slate-100 mt-1 flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-purple-400" />
+                    Media Approval Settings
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5 max-w-2xl">
+                    Konfigurasi alur persetujuan publikasi konten baru. Pengaturan ini hanya berlaku untuk 3 jenis konten: <strong>Photo</strong>, <strong>Video</strong>, dan <strong>Blog</strong>.
+                  </p>
+                </div>
+
+                {/* Super Admin Quick Actions */}
+                {user.role === "SUPER_ADMIN" && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleAllMediaApproval(true)}
+                      className="px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-[10px] font-mono font-bold transition-all active:scale-95 cursor-pointer flex items-center gap-1"
+                      title="Set all 3 media types to Automatic Publishing"
+                    >
+                      <CheckCircle2 className="w-3 h-3" /> Enable All (Auto)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleAllMediaApproval(false)}
+                      className="px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 text-[10px] font-mono font-bold transition-all active:scale-95 cursor-pointer flex items-center gap-1"
+                      title="Set all 3 media types to Manual Approval"
+                    >
+                      <Lock className="w-3 h-3" /> Require All (Manual)
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* 3 Content Cards: Photo, Video, Blog */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                
+                {/* 1. PHOTO */}
+                {(() => {
+                  const isPhotoAuto = localSettings.mediaApproval?.photo ?? true;
+                  return (
+                    <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-4 ${
+                      isPhotoAuto 
+                        ? 'bg-slate-950/80 border-emerald-500/30 shadow-lg shadow-emerald-950/10' 
+                        : 'bg-slate-950/80 border-amber-500/30 shadow-lg shadow-amber-950/10'
+                    }`}>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                              isPhotoAuto ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
+                            }`}>
+                              <ImageIcon className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <span className="text-[10px] font-mono text-slate-500 font-bold block">1. Photo</span>
+                              <h5 className="font-extrabold text-sm text-slate-100">Photo Content</h5>
+                            </div>
+                          </div>
+
+                          {/* Toggle Switch */}
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-mono font-black uppercase text-slate-400">
+                              {isPhotoAuto ? "ON" : "OFF"}
+                            </span>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={isPhotoAuto}
+                              onClick={() => handleMediaApprovalToggle("photo")}
+                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                isPhotoAuto ? 'bg-emerald-500' : 'bg-slate-800'
+                              } ${user.role !== "SUPER_ADMIN" ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}`}
+                              title={user.role !== "SUPER_ADMIN" ? "Only Super Admin can change this setting" : `Click to toggle Photo approval`}
+                            >
+                              <span
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                                  isPhotoAuto ? 'translate-x-5' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Status Label (Exact requirement) */}
+                        <div className={`p-2.5 rounded-xl border flex items-center gap-2 ${
+                          isPhotoAuto 
+                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' 
+                            : 'bg-amber-500/10 border-amber-500/20 text-amber-300'
+                        }`}>
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${isPhotoAuto ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+                          <span className="font-mono text-[11px] font-black uppercase tracking-tight">
+                            {isPhotoAuto ? "Automatic Publishing Enabled" : "Manual Approval Required"}
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] text-slate-400 leading-relaxed">
+                          {isPhotoAuto 
+                            ? "Konten foto yang diunggah pengguna langsung dipublikasikan (Published) secara otomatis tanpa menunggu persetujuan admin." 
+                            : "Konten foto yang diunggah pengguna berstatus Pending dan harus menunggu persetujuan Super Admin di Approval Queue sebelum dipublikasikan."}
+                        </p>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-900/60 flex items-center justify-between text-[10px] font-mono text-slate-500">
+                        <span>New uploads only</span>
+                        <span className={isPhotoAuto ? "text-emerald-400 font-bold" : "text-amber-400 font-bold"}>
+                          {isPhotoAuto ? "Direct to Feed" : "Approval Queue"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* 2. VIDEO */}
+                {(() => {
+                  const isVideoAuto = localSettings.mediaApproval?.video ?? false;
+                  return (
+                    <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-4 ${
+                      isVideoAuto 
+                        ? 'bg-slate-950/80 border-emerald-500/30 shadow-lg shadow-emerald-950/10' 
+                        : 'bg-slate-950/80 border-amber-500/30 shadow-lg shadow-amber-950/10'
+                    }`}>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                              isVideoAuto ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
+                            }`}>
+                              <Video className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <span className="text-[10px] font-mono text-slate-500 font-bold block">2. Video</span>
+                              <h5 className="font-extrabold text-sm text-slate-100">Video Content</h5>
+                            </div>
+                          </div>
+
+                          {/* Toggle Switch */}
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-mono font-black uppercase text-slate-400">
+                              {isVideoAuto ? "ON" : "OFF"}
+                            </span>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={isVideoAuto}
+                              onClick={() => handleMediaApprovalToggle("video")}
+                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                isVideoAuto ? 'bg-emerald-500' : 'bg-slate-800'
+                              } ${user.role !== "SUPER_ADMIN" ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}`}
+                              title={user.role !== "SUPER_ADMIN" ? "Only Super Admin can change this setting" : `Click to toggle Video approval`}
+                            >
+                              <span
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                                  isVideoAuto ? 'translate-x-5' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Status Label (Exact requirement) */}
+                        <div className={`p-2.5 rounded-xl border flex items-center gap-2 ${
+                          isVideoAuto 
+                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' 
+                            : 'bg-amber-500/10 border-amber-500/20 text-amber-300'
+                        }`}>
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${isVideoAuto ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+                          <span className="font-mono text-[11px] font-black uppercase tracking-tight">
+                            {isVideoAuto ? "Automatic Publishing Enabled" : "Manual Approval Required"}
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] text-slate-400 leading-relaxed">
+                          {isVideoAuto 
+                            ? "Konten video yang diunggah pengguna langsung dipublikasikan (Published) secara otomatis tanpa menunggu persetujuan admin." 
+                            : "Konten video yang diunggah pengguna berstatus Pending dan harus menunggu persetujuan Super Admin di Approval Queue sebelum dipublikasikan."}
+                        </p>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-900/60 flex items-center justify-between text-[10px] font-mono text-slate-500">
+                        <span>New uploads only</span>
+                        <span className={isVideoAuto ? "text-emerald-400 font-bold" : "text-amber-400 font-bold"}>
+                          {isVideoAuto ? "Direct to Feed" : "Approval Queue"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* 3. BLOG */}
+                {(() => {
+                  const isBlogAuto = localSettings.mediaApproval?.blog ?? true;
+                  return (
+                    <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-4 ${
+                      isBlogAuto 
+                        ? 'bg-slate-950/80 border-emerald-500/30 shadow-lg shadow-emerald-950/10' 
+                        : 'bg-slate-950/80 border-amber-500/30 shadow-lg shadow-amber-950/10'
+                    }`}>
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                              isBlogAuto ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
+                            }`}>
+                              <BookOpen className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <span className="text-[10px] font-mono text-slate-500 font-bold block">3. Blog</span>
+                              <h5 className="font-extrabold text-sm text-slate-100">Blog Content</h5>
+                            </div>
+                          </div>
+
+                          {/* Toggle Switch */}
+                          <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-mono font-black uppercase text-slate-400">
+                              {isBlogAuto ? "ON" : "OFF"}
+                            </span>
+                            <button
+                              type="button"
+                              role="switch"
+                              aria-checked={isBlogAuto}
+                              onClick={() => handleMediaApprovalToggle("blog")}
+                              className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                                isBlogAuto ? 'bg-emerald-500' : 'bg-slate-800'
+                              } ${user.role !== "SUPER_ADMIN" ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'}`}
+                              title={user.role !== "SUPER_ADMIN" ? "Only Super Admin can change this setting" : `Click to toggle Blog approval`}
+                            >
+                              <span
+                                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                                  isBlogAuto ? 'translate-x-5' : 'translate-x-0'
+                                }`}
+                              />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Status Label (Exact requirement) */}
+                        <div className={`p-2.5 rounded-xl border flex items-center gap-2 ${
+                          isBlogAuto 
+                            ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-300' 
+                            : 'bg-amber-500/10 border-amber-500/20 text-amber-300'
+                        }`}>
+                          <span className={`w-2 h-2 rounded-full shrink-0 ${isBlogAuto ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+                          <span className="font-mono text-[11px] font-black uppercase tracking-tight">
+                            {isBlogAuto ? "Automatic Publishing Enabled" : "Manual Approval Required"}
+                          </span>
+                        </div>
+
+                        <p className="text-[11px] text-slate-400 leading-relaxed">
+                          {isBlogAuto 
+                            ? "Konten blog yang diunggah pengguna langsung dipublikasikan (Published) secara otomatis tanpa menunggu persetujuan admin." 
+                            : "Konten blog yang diunggah pengguna berstatus Pending dan harus menunggu persetujuan Super Admin di Approval Queue sebelum dipublikasikan."}
+                        </p>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-900/60 flex items-center justify-between text-[10px] font-mono text-slate-500">
+                        <span>New uploads only</span>
+                        <span className={isBlogAuto ? "text-emerald-400 font-bold" : "text-amber-400 font-bold"}>
+                          {isBlogAuto ? "Direct to Feed" : "Approval Queue"}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+              </div>
+
+              {/* Informational Policy Banner */}
+              <div className="p-3.5 bg-slate-950/60 border border-slate-850 rounded-xl flex items-center justify-between flex-wrap gap-2 text-[10px] font-mono text-slate-400">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-purple-400 shrink-0" />
+                  <span>Kebijakan persetujuan ini tersimpan permanen di database dan divalidasi backend untuk setiap unggahan baru.</span>
+                </div>
+                <span className="text-slate-500">Konten terdahulu tidak terpengaruh oleh perubahan toggle.</span>
+              </div>
+
+            </div>
+
+            {/* FAVICON MANAGEMENT SECTION */}
+            <div className="p-6 bg-slate-900/50 border border-slate-850 rounded-2xl md:rounded-3xl space-y-6" id="favicon-management-panel">
+              
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] uppercase font-mono tracking-widest text-cyan-400 font-black border-l-2 border-cyan-400 pl-2">
+                      Website Identity & Branding
+                    </span>
+                    {user.role === "SUPER_ADMIN" ? (
+                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[9px] font-mono font-bold flex items-center gap-1">
+                        <ShieldCheck className="w-2.5 h-2.5" /> Super Admin Authorized
+                      </span>
+                    ) : (
+                      <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[9px] font-mono font-bold flex items-center gap-1">
+                        <Lock className="w-2.5 h-2.5" /> Super Admin Clearance Only
+                      </span>
+                    )}
+                  </div>
+                  <h4 className="text-base font-black font-space text-slate-100 mt-1 flex items-center gap-2">
+                    <Globe className="w-4 h-4 text-cyan-400" />
+                    Favicon Management (Ikon Website)
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5 max-w-2xl">
+                    Ganti ikon tab browser dan bookmark website secara langsung tanpa modifikasi kode manual. Format didukung: <strong>.ico</strong>, <strong>.png</strong>, dan <strong>.svg</strong> (maks. 2MB).
+                  </p>
+                </div>
+
+                {/* Reset to Default Action */}
+                {user.role === "SUPER_ADMIN" && (
+                  <button
+                    type="button"
+                    onClick={handleResetFaviconToDefault}
+                    disabled={isResettingFavicon || isSavingFavicon}
+                    className="px-3.5 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 text-slate-300 hover:text-white text-[11px] font-mono font-bold transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 self-start sm:self-auto shrink-0 disabled:opacity-50"
+                    title="Kembalikan favicon ke default NightVerse"
+                    id="btn-reset-favicon"
+                  >
+                    <RotateCcw className={`w-3.5 h-3.5 ${isResettingFavicon ? "animate-spin text-purple-400" : "text-slate-400"}`} />
+                    <span>Reset to Default</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Main Grid: Upload Staging & Live Browser Tab Preview */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                
+                {/* Upload Box (col 12 -> 5) */}
+                <div className="lg:col-span-5 space-y-4 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <label className="text-[10.5px] font-mono text-slate-400 uppercase tracking-wider block font-bold">
+                      1. Unggah File Favicon Baru
+                    </label>
+                    
+                    {/* Drop / Select Zone */}
+                    <div className={`p-5 rounded-2xl border-2 border-dashed transition-all relative ${
+                      user.role !== "SUPER_ADMIN"
+                        ? "border-slate-850 bg-slate-950/40 opacity-60 cursor-not-allowed"
+                        : stagedFaviconFile 
+                          ? "border-cyan-500/60 bg-cyan-950/10 shadow-lg shadow-cyan-950/20"
+                          : "border-slate-800 hover:border-purple-500/50 bg-slate-950/60"
+                    }`}>
+                      <input
+                        type="file"
+                        id="favicon-upload-input"
+                        accept=".ico,.png,.svg,image/x-icon,image/vnd.microsoft.icon,image/png,image/svg+xml"
+                        disabled={user.role !== "SUPER_ADMIN" || isSavingFavicon || isResettingFavicon}
+                        onChange={handleFaviconFileSelect}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed z-10"
+                      />
+                      <div className="flex flex-col items-center justify-center text-center space-y-2.5 py-3 pointer-events-none">
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
+                          stagedFaviconFile ? "bg-cyan-500/20 text-cyan-400 border border-cyan-500/30" : "bg-slate-900 text-purple-400 border border-slate-800"
+                        }`}>
+                          <Upload className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-200">
+                            {stagedFaviconFile ? stagedFaviconFile.name : "Klik atau seret file ke sini untuk mengunggah"}
+                          </p>
+                          <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+                            Dukungan format: .ICO, .PNG, .SVG (Maks. 2MB)
+                          </p>
+                        </div>
+                        {stagedFaviconFile && (
+                          <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-[10px] font-mono font-bold">
+                            {(stagedFaviconFile.size / 1024).toFixed(1)} KB • Siap disimpan
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Requirements Pill list */}
+                    <div className="grid grid-cols-3 gap-2 text-[10px] font-mono text-center">
+                      <div className="p-2 bg-slate-950/80 border border-slate-850 rounded-xl">
+                        <span className="text-slate-500 block">FORMAT</span>
+                        <strong className="text-purple-300">.ICO, .PNG, .SVG</strong>
+                      </div>
+                      <div className="p-2 bg-slate-950/80 border border-slate-850 rounded-xl">
+                        <span className="text-slate-500 block">MAX SIZE</span>
+                        <strong className="text-cyan-300">2.0 MB</strong>
+                      </div>
+                      <div className="p-2 bg-slate-950/80 border border-slate-850 rounded-xl">
+                        <span className="text-slate-500 block">CACHE</span>
+                        <strong className="text-emerald-300">Auto Busting</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Buttons: Save Changes and Cancel */}
+                  <div className="flex items-center gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={handleSaveFaviconChanges}
+                      disabled={!stagedFaviconFile || isSavingFavicon || user.role !== "SUPER_ADMIN"}
+                      className="flex-1 py-2.5 px-4 rounded-xl bg-gradient-to-r from-purple-600 to-cyan-600 hover:from-purple-500 hover:to-cyan-500 text-white font-space font-bold text-xs uppercase tracking-wider transition-all shadow-lg shadow-purple-900/30 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 cursor-pointer"
+                      id="btn-save-favicon"
+                    >
+                      {isSavingFavicon ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Menyimpan...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Save Changes</span>
+                        </>
+                      )}
+                    </button>
+
+                    {stagedFaviconFile && (
+                      <button
+                        type="button"
+                        onClick={handleCancelFaviconStaging}
+                        disabled={isSavingFavicon}
+                        className="py-2.5 px-4 rounded-xl bg-slate-950 hover:bg-slate-900 border border-slate-800 text-slate-300 hover:text-white font-mono text-xs font-bold transition-all cursor-pointer"
+                        id="btn-cancel-favicon"
+                      >
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Live Simulated Browser Tab & Multi-Scale Inspection (col 12 -> 7) */}
+                <div className="lg:col-span-7 space-y-4">
+                  <label className="text-[10.5px] font-mono text-slate-400 uppercase tracking-wider block font-bold">
+                    2. Live Browser Tab Preview & Inspeksi Skala
+                  </label>
+
+                  {/* Simulated Browser Chrome */}
+                  <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+                    {/* Browser Top Bar & Tab */}
+                    <div className="bg-slate-900/90 border-b border-slate-850 px-3 pt-2.5 pb-0 flex items-center gap-2">
+                      {/* Traffic light dots */}
+                      <div className="flex items-center gap-1.5 mr-2">
+                        <div className="w-2.5 h-2.5 rounded-full bg-rose-500/80"></div>
+                        <div className="w-2.5 h-2.5 rounded-full bg-amber-500/80"></div>
+                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/80"></div>
+                      </div>
+
+                      {/* Active Tab Mockup */}
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-950 border-t border-x border-slate-800 rounded-t-xl max-w-[260px] text-xs font-sans text-slate-200 select-none shadow-sm relative">
+                        {/* Favicon in tab */}
+                        <img
+                          src={stagedFaviconPreview || systemSettings.faviconUrl || "/favicon.svg"}
+                          alt="Favicon Tab Preview"
+                          className="w-4 h-4 rounded shrink-0 object-contain"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = "/favicon.svg";
+                          }}
+                        />
+                        <span className="truncate text-[11px] font-medium font-sans text-slate-300">
+                          {localSettings.websiteName || "NightVerse"} - Live Creator
+                        </span>
+                        <X className="w-3 h-3 text-slate-600 hover:text-slate-400 ml-auto shrink-0" />
+                      </div>
+
+                      {/* Inactive Tab Mockup */}
+                      <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 text-slate-500 max-w-[140px] text-xs font-sans select-none opacity-60">
+                        <span className="text-[10px] truncate">Dashboard</span>
+                      </div>
+                    </div>
+
+                    {/* Address bar mockup */}
+                    <div className="bg-slate-950 px-4 py-2 border-b border-slate-900 flex items-center gap-2 text-[11px] font-mono text-slate-500">
+                      <Lock className="w-3 h-3 text-emerald-400" />
+                      <span className="text-slate-400 font-sans">https://</span>
+                      <span className="text-slate-200 font-sans font-semibold">nightverse.live</span>
+                      <span className="text-slate-500 font-sans">/explore</span>
+                      <span className="ml-auto text-[9px] px-2 py-0.5 rounded bg-slate-900 text-purple-400 border border-slate-850">
+                        {stagedFaviconPreview ? "Preview (Unsaved)" : "Active Production"}
+                      </span>
+                    </div>
+
+                    {/* Multi-Resolution Inspection View */}
+                    <div className="p-4 bg-slate-950/70 grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
+                      
+                      {/* 16x16 */}
+                      <div className="p-3 bg-slate-900/60 border border-slate-850/80 rounded-xl flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center shrink-0">
+                          <img
+                            src={stagedFaviconPreview || systemSettings.faviconUrl || "/favicon.svg"}
+                            alt="16px"
+                            className="w-4 h-4 object-contain"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = "/favicon.svg";
+                            }}
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-[10px] font-mono text-slate-400 block font-bold">16 × 16 px</span>
+                          <span className="text-[9px] text-slate-500 truncate block">Browser Tab standard</span>
+                        </div>
+                      </div>
+
+                      {/* 32x32 */}
+                      <div className="p-3 bg-slate-900/60 border border-slate-850/80 rounded-xl flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center shrink-0">
+                          <img
+                            src={stagedFaviconPreview || systemSettings.faviconUrl || "/favicon.svg"}
+                            alt="32px"
+                            className="w-8 h-8 object-contain"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = "/favicon.svg";
+                            }}
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-[10px] font-mono text-slate-400 block font-bold">32 × 32 px</span>
+                          <span className="text-[9px] text-slate-500 truncate block">Retina / Bookmark</span>
+                        </div>
+                      </div>
+
+                      {/* 64x64 Preview */}
+                      <div className="p-3 bg-slate-900/60 border border-slate-850/80 rounded-xl flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center shrink-0">
+                          <img
+                            src={stagedFaviconPreview || systemSettings.faviconUrl || "/favicon.svg"}
+                            alt="64px"
+                            className="w-9 h-9 object-contain"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = "/favicon.svg";
+                            }}
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-[10px] font-mono text-slate-400 block font-bold">64 × 64 px</span>
+                          <span className="text-[9px] text-slate-500 truncate block">PWA / HiDPI icon</span>
+                        </div>
+                      </div>
+
+                    </div>
+
+                  </div>
+
+                  {/* Sync Status Banner */}
+                  <div className="p-3 bg-slate-950/50 border border-slate-850/80 rounded-xl flex items-center justify-between flex-wrap gap-2 text-[10px] font-mono text-slate-400">
+                    <div className="flex items-center gap-2">
+                      <FileCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                      <span>
+                        URL Aktif: <span className="text-slate-300 font-bold">{systemSettings.faviconUrl || "/favicon.svg"}</span>
+                      </span>
+                    </div>
+                    <span className="text-slate-500">
+                      Cache-busting aktif • Tersinkronisasi real-time
+                    </span>
+                  </div>
+
+                </div>
+
+              </div>
+
             </div>
 
             {/* Settings input forms list */}

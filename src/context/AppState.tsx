@@ -3,6 +3,7 @@ import {
   User, Blog, Photo, Video, Tag, Notification, Comment, SystemSettings, ToastAlert, Role, ContentStatus, SourceType 
 } from "../types.js";
 import { db, initDB } from "../lib/db.js";
+import { updateBrowserFavicon, validateFaviconFile, DEFAULT_FAVICON_URL } from "../lib/favicon.js";
 
 // Initialize local database handled inside AppStateProvider
 // initDB(); 
@@ -57,6 +58,8 @@ interface AppContextType {
   // Real-time custom settings
   systemSettings: SystemSettings;
   saveSystemSettings: (settings: Partial<SystemSettings>) => Promise<boolean>;
+  uploadFavicon: (file: File) => Promise<{ success: boolean; error?: string }>;
+  resetFavicon: () => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -100,6 +103,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     enableEmailVerification: true,
     enablePushNotifications: false,
     enableRealtimeStream: true,
+    mediaApproval: {
+      photo: true,
+      video: false,
+      blog: true,
+    },
   });
 
   // Database Initialization Logic
@@ -109,7 +117,28 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       setDbLoaded(true);
       
       // Post-init Sync
-      setSystemSettings(db.settings.get());
+      const initialSettings = db.settings.get();
+      setSystemSettings(initialSettings);
+      updateBrowserFavicon(initialSettings.faviconUrl, initialSettings.faviconUpdatedAt);
+
+      // Check backend for stored custom favicon if available
+      try {
+        const favRes = await fetch("/api/settings/favicon");
+        if (favRes.ok) {
+          const favData = await favRes.json();
+          if (favData.isCustom && favData.updatedAt > (initialSettings.faviconUpdatedAt || 0)) {
+            db.settings.save({
+              faviconUrl: favData.faviconUrl,
+              faviconUpdatedAt: favData.updatedAt,
+            });
+            const updated = db.settings.get();
+            setSystemSettings(updated);
+            updateBrowserFavicon(updated.faviconUrl, updated.faviconUpdatedAt);
+          }
+        }
+      } catch {
+        // Continue with local storage if server unreachable
+      }
       
       const storedToken = localStorage.getItem("nv_token");
       if (storedToken) {
@@ -136,6 +165,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
+
+  // Update browser favicon whenever systemSettings favicon changes
+  useEffect(() => {
+    if (systemSettings?.faviconUrl) {
+      updateBrowserFavicon(systemSettings.faviconUrl, systemSettings.faviconUpdatedAt);
+    }
+  }, [systemSettings?.faviconUrl, systemSettings?.faviconUpdatedAt]);
 
   // Toggle CSS Theme Class
   const toggleTheme = () => {
@@ -458,10 +494,147 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const saveSystemSettings = async (settings: Partial<SystemSettings>) => {
     if (!user || (user.role !== "SUPER_ADMIN" && user.role !== "ADMIN")) return false;
+    
+    // Security check: Only Super Admin can modify Media Approval settings
+    if (settings.mediaApproval && user.role !== "SUPER_ADMIN") {
+      triggerToast("Access Denied 🔒", "Only Super Admin can modify Media Approval settings.", "error");
+      return false;
+    }
+
     db.settings.save(settings);
-    setSystemSettings(db.settings.get());
-    triggerToast("Settings Applied Permanently", "Config registry updated in local storage.", "success");
+    const updated = db.settings.get();
+    setSystemSettings(updated);
+
+    // Synchronize to backend Express server if reachable
+    try {
+      if (settings.mediaApproval) {
+        await fetch("/api/settings/approval", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userRole: user.role,
+            mediaApproval: settings.mediaApproval,
+          }),
+        });
+      }
+    } catch {
+      // Local IDB/localStorage persistence in db.settings.save is primary
+    }
+
+    triggerToast("Settings Applied Permanently", "Config registry updated in database.", "success");
     return true;
+  };
+
+  const uploadFavicon = async (file: File): Promise<{ success: boolean; error?: string }> => {
+    if (!user || user.role !== "SUPER_ADMIN") {
+      triggerToast("Akses Ditolak 🔒", "Hanya Super Admin yang dapat mengganti favicon website.", "error");
+      return { success: false, error: "Hanya Super Admin yang dapat mengganti favicon website." };
+    }
+
+    const validation = validateFaviconFile(file);
+    if (!validation.isValid) {
+      triggerToast("Format File Tidak Valid", validation.error || "File tidak memenuhi syarat.", "error");
+      return { success: false, error: validation.error };
+    }
+
+    try {
+      // Read file as Base64 Data URL
+      const fileBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      // Send to backend for permanent filesystem storage
+      let newFaviconUrl = "";
+      let updatedAt = Date.now();
+
+      try {
+        const response = await fetch("/api/settings/favicon", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userRole: user.role,
+            fileBase64,
+            fileName: file.name,
+            mimeType: file.type,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "Gagal mengunggah favicon ke backend storage.");
+        }
+
+        const data = await response.json();
+        newFaviconUrl = data.faviconUrl;
+        updatedAt = data.updatedAt;
+      } catch (backendErr: any) {
+        console.warn("Backend favicon sync warning, utilizing local base64 fallback:", backendErr);
+        newFaviconUrl = fileBase64;
+        updatedAt = Date.now();
+      }
+
+      // Persist into database system settings
+      db.settings.save({
+        faviconUrl: newFaviconUrl,
+        faviconUpdatedAt: updatedAt,
+      });
+
+      const updated = db.settings.get();
+      setSystemSettings(updated);
+
+      // Apply directly to browser tab
+      updateBrowserFavicon(newFaviconUrl, updatedAt);
+      triggerDBSync();
+
+      triggerToast("Favicon Diperbarui ✨", "Ikon website berhasil disimpan dan diterapkan pada seluruh halaman.", "success");
+      return { success: true };
+    } catch (err: any) {
+      console.error("Upload favicon error:", err);
+      triggerToast("Gagal Memperbarui Favicon", err.message || "Terjadi kesalahan saat memproses file favicon.", "error");
+      return { success: false, error: err.message };
+    }
+  };
+
+  const resetFavicon = async (): Promise<boolean> => {
+    if (!user || user.role !== "SUPER_ADMIN") {
+      triggerToast("Akses Ditolak 🔒", "Hanya Super Admin yang dapat mereset favicon website.", "error");
+      return false;
+    }
+
+    try {
+      try {
+        await fetch("/api/settings/favicon/reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userRole: user.role }),
+        });
+      } catch (backendErr) {
+        console.warn("Backend reset error:", backendErr);
+      }
+
+      const defaultUrl = DEFAULT_FAVICON_URL;
+      const updatedAt = Date.now();
+
+      db.settings.save({
+        faviconUrl: defaultUrl,
+        faviconUpdatedAt: updatedAt,
+      });
+
+      const updated = db.settings.get();
+      setSystemSettings(updated);
+      updateBrowserFavicon(defaultUrl, updatedAt);
+      triggerDBSync();
+
+      triggerToast("Favicon Direset 🌌", "Ikon website berhasil dikembalikan ke default NightVerse.", "success");
+      return true;
+    } catch (err: any) {
+      console.error("Reset favicon error:", err);
+      triggerToast("Gagal Mereset Favicon", err.message || "Terjadi kesalahan saat mereset favicon.", "error");
+      return false;
+    }
   };
 
   const unreadNotificationsCount = notifications.filter((n) => !n.isRead).length;
@@ -505,7 +678,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         searchResults,
         triggerSearch,
         systemSettings,
-        saveSystemSettings
+        saveSystemSettings,
+        uploadFavicon,
+        resetFavicon
       }}
     >
       {children}

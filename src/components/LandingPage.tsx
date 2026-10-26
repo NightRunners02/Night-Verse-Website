@@ -212,10 +212,10 @@ export const LandingPage: React.FC = () => {
   }, [systemSettings]);
 
   useEffect(() => {
-    // Retrieve public publications
-    const allBlogs = db.blogs.getAll().filter(b => b.status === "APPROVED");
-    const allPhotos = db.photos.getAll().filter(p => p.status === "APPROVED");
-    const allVideos = db.videos.getAll().filter(v => v.status === "APPROVED");
+    // Retrieve public publications (exclude private content)
+    const allBlogs = db.blogs.getAll().filter(b => b.status === "APPROVED" && b.visibility !== "private" && (b.visibility as any) !== "PRIVATE");
+    const allPhotos = db.photos.getAll().filter(p => p.status === "APPROVED" && p.visibility !== "private" && (p.visibility as any) !== "PRIVATE");
+    const allVideos = db.videos.getAll().filter(v => v.status === "APPROVED" && v.visibility !== "private" && (v.visibility as any) !== "PRIVATE");
     const allTags = db.tags.getAll();
     const allUsers = db.users.getAll();
 

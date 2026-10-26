@@ -84,10 +84,11 @@ const ProfileOverview: React.FC<ProfileOverviewProps> = ({ onEditClick }) => {
       setStats({ blogs, photos, videos, followers, following });
 
       // ... existing activities and tag logic
+      const isViewerOwnerOrAdmin = Boolean(user && (user.id === foundUser.id || user.role === "SUPER_ADMIN" || user.role === "ADMIN"));
       const allContent = [
-        ...db.blogs.getAll().filter(b => b.userId === foundUser.id).map(i => ({ ...i, type: 'blog' })),
-        ...db.photos.getAll().filter(p => p.userId === foundUser.id).map(i => ({ ...i, type: 'photo' })),
-        ...db.videos.getAll().filter(v => v.userId === foundUser.id).map(i => ({ ...i, type: 'video' }))
+        ...db.blogs.getAll().filter(b => b.userId === foundUser.id && (isViewerOwnerOrAdmin || (b.visibility !== "private" && (b.visibility as any) !== "PRIVATE"))).map(i => ({ ...i, type: 'blog' })),
+        ...db.photos.getAll().filter(p => p.userId === foundUser.id && (isViewerOwnerOrAdmin || (p.visibility !== "private" && (p.visibility as any) !== "PRIVATE"))).map(i => ({ ...i, type: 'photo' })),
+        ...db.videos.getAll().filter(v => v.userId === foundUser.id && (isViewerOwnerOrAdmin || (v.visibility !== "private" && (v.visibility as any) !== "PRIVATE"))).map(i => ({ ...i, type: 'video' }))
       ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       
       setActivities(allContent.slice(0, 5));
@@ -408,9 +409,19 @@ const ProfileOverview: React.FC<ProfileOverviewProps> = ({ onEditClick }) => {
                             Published a <span className="text-white font-bold">{item.type}</span>: 
                             <span className="text-slate-400 italic ml-1">"{item.title}"</span>
                           </p>
-                          <div className="flex items-center gap-2 mt-1">
+                          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                             <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded ${item.status === 'APPROVED' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'}`}>
                               {item.status}
+                            </span>
+                            <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
+                              item.visibility === "private" ? "text-amber-400 bg-amber-950/30 border-amber-800/40" : "text-cyan-400 bg-cyan-950/30 border-cyan-800/40"
+                            }`}>
+                              {item.visibility === "private" ? "Private" : "Public"}
+                            </span>
+                            <span className={`text-[9px] font-mono px-1.5 py-0.5 rounded border ${
+                              item.engagement === "muted" || item.allowComments === false ? "text-rose-400 bg-rose-950/30 border-rose-800/40" : "text-purple-400 bg-purple-950/30 border-purple-800/40"
+                            }`}>
+                              {item.engagement === "muted" || item.allowComments === false ? "Muted" : "Open"}
                             </span>
                           </div>
                         </div>

@@ -5,7 +5,7 @@ import {
   ChevronRight, ChevronLeft, ChevronsLeft, ChevronsRight, MoreHorizontal,
   Edit2, Trash2, Heart, MessageSquare, Plus, Save, Send, ShieldAlert, X,
   Smartphone, Globe, Lock, MessageCircle, FileJson, Layers, ExternalLink,
-  Crop as CropIcon, Zap, Loader2, Info, Search, Play
+  Crop as CropIcon, Zap, Loader2, Info, Search, Play, MessageSquareOff
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useAppState } from "../context/AppState.js";
@@ -48,8 +48,9 @@ export const ContentCreator: React.FC = () => {
   const [tagsInput, setTagsInput] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [category, setCategory] = useState("Others");
-  const [visibility, setVisibility] = useState<"PUBLIC" | "PRIVATE">("PUBLIC");
-  const [allowComments, setAllowComments] = useState(true);
+  const [visibility, setVisibility] = useState<"public" | "private">("public");
+  const [engagement, setEngagement] = useState<"open" | "muted">("open");
+  const allowComments = engagement === "open";
 
   // Blog parameters
   const [blogContent, setBlogContent] = useState("");
@@ -67,6 +68,61 @@ export const ContentCreator: React.FC = () => {
   const [videoResolution, setVideoResolution] = useState("1080p");
   const [videoAspectRatio, setVideoAspectRatio] = useState("16:9");
   const [videoThumbnail, setVideoThumbnail] = useState("");
+  const [videoEmbedUrls, setVideoEmbedUrls] = useState<string[]>([""]);
+
+  // Helper validation & embed URL formatting
+  const isValidEmbedUrl = (url: string): boolean => {
+    if (!url || typeof url !== "string") return false;
+    const trimmed = url.trim();
+    if (!trimmed) return false;
+    const urlPattern = /^(https?:\/\/|\/\/)[^\s/$.?#].[^\s]*$/i;
+    const isEmbedPlatform = trimmed.includes("youtube.com") || 
+                            trimmed.includes("youtu.be") || 
+                            trimmed.includes("vimeo.com") || 
+                            trimmed.includes("vidara.so") || 
+                            trimmed.includes("dailymotion.com") ||
+                            trimmed.includes("twitch.tv") ||
+                            trimmed.includes("embed");
+    return urlPattern.test(trimmed) || isEmbedPlatform || trimmed.length > 5;
+  };
+
+  const getEmbedIframeSrc = (url: string) => {
+    if (!url) return "";
+    const trimmed = url.trim();
+    if (trimmed.includes("youtube.com/watch?v=")) return trimmed.replace("watch?v=", "embed/");
+    if (trimmed.includes("youtu.be/")) return trimmed.replace("youtu.be/", "youtube.com/embed/");
+    if (trimmed.includes("vimeo.com/")) return trimmed.replace("vimeo.com/", "player.vimeo.com/video/");
+    return trimmed;
+  };
+
+  const handleAddVideoUrl = (afterIndex?: number) => {
+    setVideoEmbedUrls(prev => {
+      const next = [...prev];
+      if (afterIndex !== undefined && afterIndex >= 0) {
+        next.splice(afterIndex + 1, 0, "");
+      } else {
+        next.push("");
+      }
+      return next;
+    });
+  };
+
+  const handleRemoveVideoUrl = (index: number) => {
+    setVideoEmbedUrls(prev => {
+      const next = prev.filter((_, i) => i !== index);
+      return next.length > 0 ? next : [""];
+    });
+  };
+
+  const handleVideoUrlChange = (index: number, val: string) => {
+    setVideoEmbedUrls(prev => {
+      const next = [...prev];
+      next[index] = val;
+      const firstValid = next.find(u => u.trim().length > 0) || val;
+      setMediaUrl(firstValid);
+      return next;
+    });
+  };
 
   // Photo specific thumbnail (new)
   const [photoThumbnail, setPhotoThumbnail] = useState("");
@@ -353,8 +409,23 @@ export const ContentCreator: React.FC = () => {
 
     const mediaType = editingContent ? editingContent.type : activeMediaTab;
     
-    const isSpecialRole = user.role === "ADMIN" || user.role === "SUPER_ADMIN" || user.role === "MODERATOR";
-    const status = isDraft ? "DRAFT" : (isSpecialRole ? "APPROVED" : "PENDING");
+    // Evaluate Media Approval Policy from System Settings
+    const currentSettings = db.settings.get();
+    const mediaApproval = currentSettings.mediaApproval || { photo: true, video: false, blog: true };
+    const isAutoPublish = mediaApproval[mediaType as "photo" | "video" | "blog"] ?? true;
+
+    let status: any = "PENDING";
+    if (isDraft) {
+      status = "DRAFT";
+    } else if (editingContent) {
+      status = editingContent.status; // Preserve existing status when editing!
+    } else if (user.role === "SUPER_ADMIN") {
+      status = "APPROVED"; // Super Admin always published directly
+    } else if (isAutoPublish) {
+      status = "APPROVED"; // ON -> Automatic Publishing Enabled -> Published directly!
+    } else {
+      status = "PENDING";  // OFF -> Manual Approval Required -> Pending in Approval Queue!
+    }
     
     const itemData: any = {
       id: editingContent ? editingContent.id : Math.random().toString(36).substr(2, 9),
@@ -371,7 +442,8 @@ export const ContentCreator: React.FC = () => {
       likedBy: editingContent ? editingContent.likedBy || [] : [],
       category,
       visibility,
-      allowComments,
+      engagement,
+      allowComments: engagement === "open",
     };
 
     if (mediaType === "blog") {
@@ -385,7 +457,17 @@ export const ContentCreator: React.FC = () => {
       if (editingContent) db.photos.update(itemData.id, itemData); else db.photos.add(itemData);
     } else if (mediaType === "video") {
       itemData.sourceType = mediaSource;
-      itemData.url = mediaUrl;
+      if (mediaSource === "EMBED") {
+        const cleanedEmbedUrls = videoEmbedUrls
+          .map(u => u.trim())
+          .filter(u => u.length > 0);
+        const uniqueEmbedUrls = Array.from(new Set(cleanedEmbedUrls));
+        itemData.videoUrls = uniqueEmbedUrls.length > 0 ? uniqueEmbedUrls : (mediaUrl ? [mediaUrl] : []);
+        itemData.url = uniqueEmbedUrls[0] || mediaUrl || "";
+      } else {
+        itemData.url = mediaUrl;
+        itemData.videoUrls = mediaUrl ? [mediaUrl] : [];
+      }
       itemData.thumbnailUrl = videoThumbnail;
       itemData.duration = Number(videoDuration) || 0;
       itemData.resolution = videoResolution;
@@ -393,11 +475,25 @@ export const ContentCreator: React.FC = () => {
       if (editingContent) db.videos.update(itemData.id, itemData); else db.videos.add(itemData);
     }
 
-    triggerToast(
-      isDraft ? "Draft Saved" : "Success", 
-      isDraft ? "Your work is saved as draft" : (editingContent ? "Content updated successfully" : (isSpecialRole ? "Content published immediately" : "Content submitted for review")), 
-      "success"
-    );
+    let toastTitle = "Success";
+    let toastMessage = "Work processed successfully";
+    if (isDraft) {
+      toastTitle = "Draft Saved";
+      toastMessage = "Your work is saved as draft.";
+    } else if (editingContent) {
+      toastTitle = "Content Updated";
+      toastMessage = "Asset modifications have been saved.";
+    } else if (status === "APPROVED") {
+      toastTitle = "Published Immediately 🎉";
+      toastMessage = isAutoPublish 
+        ? "Automatic Publishing Enabled: Your work is now live on the platform!" 
+        : "Super Admin authorization: Content published live!";
+    } else {
+      toastTitle = "Submitted for Approval ⏳";
+      toastMessage = "Manual Approval Required: Your work has been routed to the Super Admin Approval Queue.";
+    }
+
+    triggerToast(toastTitle, toastMessage, status === "APPROVED" || isDraft ? "success" : "info");
 
     triggerDBSync();
     resetForm();
@@ -414,8 +510,10 @@ export const ContentCreator: React.FC = () => {
     setTags(item.tags || []);
     setTagsInput("");
     setCategory(item.category || "Others");
-    setVisibility(item.visibility || "PUBLIC");
-    setAllowComments(item.allowComments !== false);
+    const itemVis = (item.visibility?.toLowerCase() === "private" ? "private" : "public") as "public" | "private";
+    const itemEng = (item.engagement?.toLowerCase() === "muted" || item.allowComments === false ? "muted" : "open") as "open" | "muted";
+    setVisibility(itemVis);
+    setEngagement(itemEng);
     setActiveMediaTab(item.type);
     
     if (item.type === "blog") {
@@ -442,6 +540,11 @@ export const ContentCreator: React.FC = () => {
     } else if (item.type === "video") {
       setMediaSource(item.sourceType || "URL");
       setMediaUrl(item.url || "");
+      if (item.videoUrls && Array.isArray(item.videoUrls) && item.videoUrls.length > 0) {
+        setVideoEmbedUrls(item.videoUrls);
+      } else {
+        setVideoEmbedUrls(item.url ? [item.url] : [""]);
+      }
       setVideoThumbnail(item.thumbnailUrl || "");
       setVideoDuration(item.duration?.toString() || "");
       setVideoResolution(item.resolution || "1080p");
@@ -563,11 +666,14 @@ export const ContentCreator: React.FC = () => {
     setPhotoThumbnail("");
     setVideoDuration("");
     setVideoAspectRatio("16:9");
+    setVideoEmbedUrls([""]);
     setIsUploading(false);
     setUploadProgress(0);
     setBlogCoverSource("UPLOAD");
     setUploadedFileName("");
     setUploadedFileSize("");
+    setVisibility("public");
+    setEngagement("open");
   };
 
   const filteredTags = userTags.filter(t => t.name.toLowerCase().includes(tagSearch.toLowerCase()));
@@ -688,10 +794,22 @@ export const ContentCreator: React.FC = () => {
                         alt="thumb" 
                       />
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                           <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-tighter">{u.type}</span>
                           <span className={`text-[8px] px-1.5 py-0.5 rounded border uppercase font-black ${getStatusColor(u.status)}`}>
                             {u.status}
+                          </span>
+                          <span className={`text-[8px] px-1.5 py-0.5 rounded border font-mono font-bold flex items-center gap-1 ${
+                            u.visibility === "private" ? "text-amber-400 bg-amber-950/30 border-amber-800/40" : "text-cyan-400 bg-cyan-950/30 border-cyan-800/40"
+                          }`}>
+                            {u.visibility === "private" ? <Lock className="w-2.5 h-2.5" /> : <Globe className="w-2.5 h-2.5" />}
+                            {u.visibility === "private" ? "Private" : "Public"}
+                          </span>
+                          <span className={`text-[8px] px-1.5 py-0.5 rounded border font-mono font-bold flex items-center gap-1 ${
+                            u.engagement === "muted" || u.allowComments === false ? "text-rose-400 bg-rose-950/30 border-rose-800/40" : "text-purple-400 bg-purple-950/30 border-purple-800/40"
+                          }`}>
+                            {u.engagement === "muted" || u.allowComments === false ? <MessageSquareOff className="w-2.5 h-2.5" /> : <MessageSquare className="w-2.5 h-2.5" />}
+                            {u.engagement === "muted" || u.allowComments === false ? "Muted" : "Open"}
                           </span>
                         </div>
                         <h4 className="text-sm font-bold truncate text-slate-200">{u.title}</h4>
@@ -1028,25 +1146,22 @@ export const ContentCreator: React.FC = () => {
                            })}
                         </div>
 
-                        {mediaSource === "URL" || mediaSource === "EMBED" ? (
+                        {mediaSource === "URL" ? (
                            <div className="space-y-4">
                               <div className="space-y-2">
                                  <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 font-mono">
-                                    {mediaSource === "EMBED" ? "External Embed Reference" : "Source Signal URL"}
+                                    Source Signal URL
                                  </label>
                                  <input 
                                    type="text" 
                                    value={mediaUrl}
                                    onChange={(e) => setMediaUrl(e.target.value)}
-                                   placeholder={mediaSource === "EMBED" ? "Paste YouTube Link or Embed ID..." : "https://cloud.storage/..."} 
+                                   placeholder="https://cloud.storage/..." 
                                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 md:py-3 text-[13px] md:text-sm focus:border-purple-500 outline-none transition-all placeholder:text-slate-700" 
                                  />
-                                 {mediaSource === "EMBED" && (
-                                   <p className="text-[9px] text-slate-600 italic font-mono px-1">Tip: Use YouTube/Vimeo URLs or platform-specific content IDs.</p>
-                                 )}
                               </div>
 
-                              {mediaUrl && mediaSource === "URL" && (
+                              {mediaUrl && (
                                 <div className={`w-full rounded-2xl overflow-hidden border border-slate-800 relative group flex items-center justify-center transition-all duration-300 bg-slate-950/50 ${activeMediaTab === "video" ? "max-w-4xl mx-auto" : ""}`}>
                                   {activeMediaTab === "photo" ? (
                                     <img src={mediaUrl} className="w-full h-auto block max-h-[600px] object-contain" alt="Preview reference" onError={(e) => (e.currentTarget.style.display = 'none')} referrerPolicy="no-referrer" />
@@ -1055,34 +1170,92 @@ export const ContentCreator: React.FC = () => {
                                   )}
                                 </div>
                               )}
-
-                              {mediaUrl && mediaSource === "EMBED" && (
-                                <div className={`w-full bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 relative group flex items-center justify-center transition-all duration-300 ${getAspectRatioClass(videoAspectRatio)}`}>
-                                  {mediaUrl.includes("youtube.com") || mediaUrl.includes("youtu.be") || mediaUrl.includes("vimeo.com") || mediaUrl.includes("vidara.so") || mediaUrl.startsWith("http") ? (
-                                    <iframe
-                                      src={
-                                        mediaUrl.includes("youtube.com/watch?v=") 
-                                          ? mediaUrl.replace("watch?v=", "embed/") 
-                                          : mediaUrl.includes("youtu.be/")
-                                          ? mediaUrl.replace("youtu.be/", "youtube.com/embed/")
-                                          : mediaUrl.includes("vimeo.com/")
-                                          ? mediaUrl.replace("vimeo.com/", "player.vimeo.com/video/")
-                                          : mediaUrl
-                                      }
-                                      className="w-full h-full border-0"
-                                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                                      allowFullScreen
-                                      title="Embed Preview"
-                                    />
-                                  ) : (
-                                    <div className="flex flex-col items-center justify-center text-slate-500 p-8 text-center">
-                                      <Play className="w-8 h-8 mb-2 opacity-50" />
-                                      <p className="text-sm">Unsupported standard embed. Ensure the player handles this source correctly on output.</p>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
                            </div>
+                        ) : mediaSource === "EMBED" ? (
+                          <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                              <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 font-mono flex items-center gap-1.5">
+                                <Play className="w-3.5 h-3.5 text-purple-400" />
+                                External Embed Reference
+                                {videoEmbedUrls.length > 1 && (
+                                  <span className="text-purple-400 font-bold font-mono">({videoEmbedUrls.length} Referensi Video)</span>
+                                )}
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => handleAddVideoUrl()}
+                                className="px-3 py-1.5 bg-purple-950/40 border border-purple-800/60 hover:border-purple-500 text-purple-300 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer"
+                              >
+                                <Plus className="w-3.5 h-3.5" /> Tambah Video
+                              </button>
+                            </div>
+
+                            <div className="space-y-3">
+                              {videoEmbedUrls.map((url, index) => {
+                                const isValid = isValidEmbedUrl(url);
+                                return (
+                                  <div key={index} className="space-y-2 p-3 md:p-4 bg-slate-950/70 border border-slate-800/80 rounded-2xl transition-all hover:border-slate-750">
+                                    <div className="flex items-center gap-2">
+                                      <div className="relative flex-1">
+                                        <input 
+                                          type="text" 
+                                          value={url}
+                                          onChange={(e) => handleVideoUrlChange(index, e.target.value)}
+                                          placeholder={`URL Video ${index + 1} (YouTube, Vimeo, dll)...`} 
+                                          className={`w-full bg-slate-950 border ${
+                                            url.trim() && !isValid 
+                                              ? "border-rose-500/80 focus:border-rose-500 text-rose-300" 
+                                              : "border-slate-800 focus:border-purple-500 text-slate-200"
+                                          } rounded-xl px-4 py-2.5 text-xs md:text-sm outline-none transition-all placeholder:text-slate-700 font-sans`} 
+                                        />
+                                      </div>
+
+                                      {/* Small Delete/Trash (X / Minus) Button */}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemoveVideoUrl(index)}
+                                        disabled={videoEmbedUrls.length === 1 && !url}
+                                        className="p-2.5 bg-slate-900 border border-slate-800 hover:border-rose-500/50 hover:bg-rose-950/30 text-slate-400 hover:text-rose-400 rounded-xl transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer shrink-0"
+                                        title="Hapus referensi video ini"
+                                      >
+                                        <X className="w-4 h-4" />
+                                      </button>
+                                    </div>
+
+                                    {/* Field Validation Message */}
+                                    {url.trim() && !isValid && (
+                                      <div className="flex items-center gap-1.5 text-rose-400 text-[10px] font-mono font-medium px-1 pt-1">
+                                        <AlertCircle className="w-3 h-3 shrink-0 text-rose-500" />
+                                        <span>Format URL embed tidak valid. Harap gunakan URL dari YouTube, Vimeo, atau penyedia embed terverifikasi.</span>
+                                      </div>
+                                    )}
+
+                                    {/* Field Realtime Embed Preview */}
+                                    {url.trim() && isValid && (
+                                      <div className="mt-3 pt-3 border-t border-slate-900 space-y-2">
+                                        <div className="flex items-center justify-between text-[10px] font-mono font-bold text-purple-400">
+                                          <span className="flex items-center gap-1">
+                                            <Play className="w-3 h-3 text-purple-400" /> Realtime Preview Video #{index + 1}
+                                          </span>
+                                          <span className="text-slate-500 font-normal truncate max-w-[220px]">{url}</span>
+                                        </div>
+                                        <div className={`w-full bg-slate-950 rounded-xl overflow-hidden border border-slate-800 relative group flex items-center justify-center transition-all duration-300 ${getAspectRatioClass(videoAspectRatio)}`}>
+                                          <iframe
+                                            src={getEmbedIframeSrc(url)}
+                                            className="w-full h-full border-0"
+                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                                            allowFullScreen
+                                            title={`Embed Preview ${index + 1}`}
+                                          />
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <p className="text-[9px] text-slate-600 italic font-mono px-1">Tip: Tambahkan beberapa referensi video embed menggunakan ikon Plus (+). Setiap video dapat dilihat previewnya secara terpisah.</p>
+                          </div>
                         ) : (
                            <div className="space-y-4">
                               <div className="relative group">
@@ -1397,49 +1570,155 @@ export const ContentCreator: React.FC = () => {
                         )}
                      </div>
 
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8 pt-4">
-                        <div className="flex items-center justify-between p-4 bg-slate-950/50 border border-slate-850 rounded-2xl group hover:border-slate-700 transition-all">
-                           <div className="flex items-center gap-3">
-                              <div className="p-2 rounded-xl bg-slate-900 group-hover:bg-purple-900/20 transition-all">
-                                 {visibility === "PUBLIC" ? <Globe className="w-4 h-4 text-cyan-400" /> : <Lock className="w-4 h-4 text-rose-400" />}
-                              </div>
-                              <div>
-                                 <h4 className="text-xs font-bold text-slate-200">Visibility</h4>
-                                 <p className="text-[9px] text-slate-500 mt-0.5">Control transmission scope.</p>
-                              </div>
-                           </div>
-                           <button 
-                             type="button"
-                             onClick={() => setVisibility(v => v === "PUBLIC" ? "PRIVATE" : "PUBLIC")}
-                             className={`text-[9px] font-black tracking-widest uppercase px-3 py-1.5 rounded-lg border transition-all ${
-                               visibility === "PUBLIC" ? "bg-emerald-950/30 text-emerald-400 border-emerald-900/40" : "bg-rose-950/30 text-rose-400 border-rose-900/40"
-                             }`}
-                           >
-                             {visibility}
-                           </button>
+                      {/* Engagement & Visibility Settings */}
+                      <div className="space-y-4 pt-6 border-t border-slate-800/60">
+                        <div>
+                          <h3 className="text-xs uppercase font-black tracking-widest text-slate-300 font-space flex items-center gap-2">
+                            <Sparkles className="w-3.5 h-3.5 text-purple-400" /> Visibility & Engagement Settings
+                          </h3>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            Atur jangkauan publikasi di Explore Feed dan izin interaksi komentar secara independen.
+                          </p>
                         </div>
 
-                        <div className="flex items-center justify-between p-4 bg-slate-950/50 border border-slate-850 rounded-2xl group hover:border-slate-700 transition-all">
-                           <div className="flex items-center gap-3">
-                              <div className="p-2 rounded-xl bg-slate-900 group-hover:bg-purple-900/20 transition-all">
-                                 <MessageCircle className="w-4 h-4 text-indigo-400" />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Visibility Settings Card */}
+                          <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2.5">
+                                <div className={`p-2 rounded-xl transition-colors ${
+                                  visibility === "public" ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20" : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                                }`}>
+                                  {visibility === "public" ? <Globe className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
+                                </div>
+                                <div>
+                                  <h4 className="text-xs font-bold text-slate-200">Visibility</h4>
+                                  <span className="text-[10px] text-slate-500">Jangkauan publikasi</span>
+                                </div>
                               </div>
-                              <div>
-                                 <h4 className="text-xs font-bold text-slate-200">Engagement</h4>
-                                 <p className="text-[9px] text-slate-500 mt-0.5">Allow neural feedback.</p>
+                              <span className={`text-[9px] font-black tracking-wider uppercase px-2.5 py-1 rounded-full border font-mono ${
+                                visibility === "public" 
+                                  ? "bg-cyan-950/40 text-cyan-400 border-cyan-800/50 shadow-sm shadow-cyan-900/20" 
+                                  : "bg-amber-950/40 text-amber-400 border-amber-800/50 shadow-sm shadow-amber-900/20"
+                              }`}>
+                                {visibility === "public" ? "Public" : "Private"}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setVisibility("public")}
+                                className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                                  visibility === "public"
+                                    ? "bg-cyan-500/15 border-cyan-500/60 text-cyan-300 shadow-lg shadow-cyan-950/30 ring-1 ring-cyan-500/30"
+                                    : "bg-slate-900/40 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-900"
+                                }`}
+                              >
+                                <Globe className="w-3.5 h-3.5" /> Public
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setVisibility("private")}
+                                className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                                  visibility === "private"
+                                    ? "bg-amber-500/15 border-amber-500/60 text-amber-300 shadow-lg shadow-amber-950/30 ring-1 ring-amber-500/30"
+                                    : "bg-slate-900/40 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-900"
+                                }`}
+                              >
+                                <Lock className="w-3.5 h-3.5" /> Private
+                              </button>
+                            </div>
+
+                            <p className="text-[10px] text-slate-500 leading-tight">
+                              {visibility === "public" 
+                                ? "Konten tampil di Explore Feed & pencarian publik." 
+                                : "Hanya dapat diakses oleh Anda di dashboard/profil pribadi."}
+                            </p>
+                          </div>
+
+                          {/* Engagement Settings Card */}
+                          <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between space-y-3">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2.5">
+                                <div className={`p-2 rounded-xl transition-colors ${
+                                  engagement === "open" ? "bg-purple-500/10 text-purple-400 border border-purple-500/20" : "bg-rose-500/10 text-rose-400 border border-rose-500/20"
+                                }`}>
+                                  {engagement === "open" ? <MessageSquare className="w-4 h-4" /> : <MessageSquareOff className="w-4 h-4" />}
+                                </div>
+                                <div>
+                                  <h4 className="text-xs font-bold text-slate-200">Engagement</h4>
+                                  <span className="text-[10px] text-slate-500">Fitur komentar</span>
+                                </div>
                               </div>
-                           </div>
-                           <button 
-                             type="button"
-                             onClick={() => setAllowComments(!allowComments)}
-                             className={`text-[9px] font-black tracking-widest uppercase px-3 py-1.5 rounded-lg border transition-all ${
-                               allowComments ? "bg-indigo-950/30 text-indigo-400 border-indigo-900/40" : "bg-slate-900 text-slate-500 border-slate-800"
-                             }`}
-                           >
-                             {allowComments ? "OPEN" : "MUTED"}
-                           </button>
+                              <span className={`text-[9px] font-black tracking-wider uppercase px-2.5 py-1 rounded-full border font-mono ${
+                                engagement === "open" 
+                                  ? "bg-purple-950/40 text-purple-400 border-purple-800/50 shadow-sm shadow-purple-900/20" 
+                                  : "bg-rose-950/40 text-rose-400 border-rose-800/50 shadow-sm shadow-rose-900/20"
+                              }`}>
+                                {engagement === "open" ? "Comments Enabled" : "Comments Disabled"}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setEngagement("open")}
+                                className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                                  engagement === "open"
+                                    ? "bg-purple-500/15 border-purple-500/60 text-purple-300 shadow-lg shadow-purple-950/30 ring-1 ring-purple-500/30"
+                                    : "bg-slate-900/40 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-900"
+                                }`}
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" /> Open
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEngagement("muted")}
+                                className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-bold transition-all border cursor-pointer ${
+                                  engagement === "muted"
+                                    ? "bg-rose-500/15 border-rose-500/60 text-rose-300 shadow-lg shadow-rose-950/30 ring-1 ring-rose-500/30"
+                                    : "bg-slate-900/40 border-slate-800 text-slate-400 hover:text-white hover:bg-slate-900"
+                                }`}
+                              >
+                                <MessageSquareOff className="w-3.5 h-3.5" /> Muted
+                              </button>
+                            </div>
+
+                            <p className="text-[10px] text-slate-500 leading-tight">
+                              {engagement === "open" 
+                                ? "Pengguna lain dapat melihat & mengirim komentar." 
+                                : "Fitur komentar dinonaktifkan (komentar tersimpan tidak dihapus)."}
+                            </p>
+                          </div>
                         </div>
-                     </div>
+
+                        {/* Active combination preview badge */}
+                        <div className="p-3 bg-slate-950/80 border border-slate-850 rounded-xl flex items-center justify-between gap-3 text-xs">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest">Mode Kombinasi:</span>
+                            <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border flex items-center gap-1 ${
+                              visibility === "public" ? "text-cyan-400 bg-cyan-950/30 border-cyan-800/40" : "text-amber-400 bg-amber-950/30 border-amber-800/40"
+                            }`}>
+                              {visibility === "public" ? <Globe className="w-2.5 h-2.5" /> : <Lock className="w-2.5 h-2.5" />}
+                              {visibility === "public" ? "Public" : "Private"}
+                            </span>
+                            <span className="text-slate-600">+</span>
+                            <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border flex items-center gap-1 ${
+                              engagement === "open" ? "text-purple-400 bg-purple-950/30 border-purple-800/40" : "text-rose-400 bg-rose-950/30 border-rose-800/40"
+                            }`}>
+                              {engagement === "open" ? <MessageSquare className="w-2.5 h-2.5" /> : <MessageSquareOff className="w-2.5 h-2.5" />}
+                              {engagement === "open" ? "Comments Enabled" : "Comments Disabled"}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-slate-400 hidden sm:inline font-mono">
+                            {visibility === "public" && engagement === "open" && "Tampil di Explore Feed dan komentar aktif."}
+                            {visibility === "public" && engagement === "muted" && "Tampil di Explore Feed, tetapi komentar dinonaktifkan."}
+                            {visibility === "private" && engagement === "open" && "Hanya untuk Anda (tersembunyi dari Explore Feed)."}
+                            {visibility === "private" && engagement === "muted" && "Hanya untuk Anda, tersembunyi & komentar dinonaktifkan."}
+                          </span>
+                        </div>
+                      </div>
                   </div>
 
                   <div className="flex items-center justify-end gap-3 pt-8">
@@ -1671,9 +1950,23 @@ export const ContentCreator: React.FC = () => {
                     <div key={i} className="group bg-slate-900/40 border border-slate-800 rounded-3xl overflow-hidden hover:border-purple-500/30 transition-all flex flex-col">
                        <div className="aspect-video relative bg-slate-950">
                           <img src={item.thumbnailUrl || item.url || null} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="thumb" />
-                          <div className="absolute top-3 left-3 flex gap-2">
+                          <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
                              <span className="text-[8px] font-bold uppercase tracking-widest bg-slate-950/80 backdrop-blur px-2 py-0.5 rounded text-slate-300 border border-slate-800">{item.type}</span>
                              <span className={`text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border ${getStatusColor(item.status)}`}>{item.status}</span>
+                             {item.visibility === "private" ? (
+                               <span className="text-[8px] font-bold uppercase tracking-widest bg-amber-500/10 text-amber-400 border border-amber-500/30 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                 <Lock className="w-2.5 h-2.5" /> Private
+                               </span>
+                             ) : (
+                               <span className="text-[8px] font-bold uppercase tracking-widest bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                 <Globe className="w-2.5 h-2.5" /> Public
+                               </span>
+                             )}
+                             {item.engagement === "muted" || item.allowComments === false ? (
+                               <span className="text-[8px] font-bold uppercase tracking-widest bg-rose-500/10 text-rose-400 border border-rose-500/30 px-1.5 py-0.5 rounded flex items-center gap-1">
+                                 <MessageSquareOff className="w-2.5 h-2.5" /> Muted
+                               </span>
+                             ) : null}
                           </div>
                        </div>
                        <div className="p-5 flex-1 flex flex-col justify-between">
