@@ -758,19 +758,23 @@ export const db = {
       const tags = get<Tag[]>(KEYS.TAGS, []);
       const now = new Date().toISOString();
       const cleanName = tagData.name.toLowerCase().trim().replace(/^#/, "");
+      if (!cleanName) return null;
       
       // Check if tag already exists
-      const existing = tags.find(t => t.name.toLowerCase() === cleanName);
-      if (existing) {
-        const updated = {
+      const existingIndex = tags.findIndex(t => t.name.toLowerCase() === cleanName);
+      if (existingIndex > -1) {
+        const existing = tags[existingIndex];
+        const updated: Tag = {
           ...existing,
           type: tagData.type || existing.type || "General",
           isAmbiguous: tagData.isAmbiguous !== undefined ? tagData.isAmbiguous : (existing.isAmbiguous || false),
           status: tagData.status || existing.status || "APPROVED",
           updatedAt: now
         };
-        tags[tags.findIndex(t => t.id === existing.id)] = updated;
+        tags[existingIndex] = updated;
         set(KEYS.TAGS, tags);
+        window.dispatchEvent(new CustomEvent("nightverse_tags_updated", { detail: tags }));
+        window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.TAGS, data: tags } }));
         return updated;
       }
 
@@ -796,7 +800,10 @@ export const db = {
         growthMonthly: 0,
         isBanned: false
       };
-      set(KEYS.TAGS, [newTag, ...tags]);
+      const updatedList = [newTag, ...tags];
+      set(KEYS.TAGS, updatedList);
+      window.dispatchEvent(new CustomEvent("nightverse_tags_updated", { detail: updatedList }));
+      window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.TAGS, data: updatedList } }));
       return newTag;
     },
     approve: (id: string) => {
@@ -805,6 +812,8 @@ export const db = {
       if (index === -1) return;
       tags[index] = { ...tags[index], status: "APPROVED", updatedAt: new Date().toISOString() };
       set(KEYS.TAGS, tags);
+      window.dispatchEvent(new CustomEvent("nightverse_tags_updated", { detail: tags }));
+      window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.TAGS, data: tags } }));
     },
     reject: (id: string) => {
       const tags = get<Tag[]>(KEYS.TAGS, []);
@@ -812,11 +821,40 @@ export const db = {
       if (index === -1) return;
       tags[index] = { ...tags[index], status: "REJECTED", updatedAt: new Date().toISOString() };
       set(KEYS.TAGS, tags);
+      window.dispatchEvent(new CustomEvent("nightverse_tags_updated", { detail: tags }));
+      window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.TAGS, data: tags } }));
     },
     delete: (id: string) => {
       const tags = get<Tag[]>(KEYS.TAGS, []);
-      set(KEYS.TAGS, tags.filter(t => t.id !== id));
-      db.tags.reconcile();
+      const tagToDelete = tags.find(t => t.id === id);
+      const tagName = tagToDelete?.name.toLowerCase();
+
+      const remainingTags = tags.filter(t => t.id !== id);
+      set(KEYS.TAGS, remainingTags);
+
+      // Clean up references from blogs, photos, and videos so reconcile doesn't resurrect deleted tags
+      if (tagName) {
+        const blogs = get<Blog[]>(KEYS.BLOGS, []);
+        set(KEYS.BLOGS, blogs.map(b => ({
+          ...b,
+          tags: (b.tags || []).filter(t => t.toLowerCase().trim().replace(/^#/, "") !== tagName)
+        })));
+
+        const photos = get<Photo[]>(KEYS.PHOTOS, []);
+        set(KEYS.PHOTOS, photos.map(p => ({
+          ...p,
+          tags: (p.tags || []).filter(t => t.toLowerCase().trim().replace(/^#/, "") !== tagName)
+        })));
+
+        const videos = get<Video[]>(KEYS.VIDEOS, []);
+        set(KEYS.VIDEOS, videos.map(v => ({
+          ...v,
+          tags: (v.tags || []).filter(t => t.toLowerCase().trim().replace(/^#/, "") !== tagName)
+        })));
+      }
+
+      window.dispatchEvent(new CustomEvent("nightverse_tags_updated", { detail: remainingTags }));
+      window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.TAGS, data: remainingTags } }));
     },
     reconcile: () => {
       const blogs = get<Blog[]>(KEYS.BLOGS, []).filter(b => b && b.status === "APPROVED");
@@ -973,6 +1011,10 @@ export const db = {
           tags: v.tags.map(t => t.toLowerCase().trim().replace(/^#/, "") === oldName ? newName : t)
         })));
       }
+
+      window.dispatchEvent(new CustomEvent("nightverse_tags_updated", { detail: tags }));
+      window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.TAGS, data: tags } }));
+      return newTag;
     },
     ban: (name: string, isBanned: boolean) => {
       const tags = get<Tag[]>(KEYS.TAGS, []);

@@ -7,7 +7,7 @@ import { getAspectRatioClass } from "./ContentCreator.js";
 import { RoleBadge, BadgeType } from "./RoleBadge.js";
 
 export const ContentLightbox: React.FC = () => {
-  const { focusedContent, setFocusedContent, token, user, triggerToast, createNotification, viewProfile, followActionCount, toggleFollow, triggerDBSync, triggerSearch, navigateTo } = useAppState();
+  const { focusedContent, setFocusedContent, token, user, triggerToast, createNotification, viewProfile, followActionCount, toggleFollow, triggerDBSync, triggerSearch, navigateTo, dbActionCount } = useAppState();
   const [comments, setComments] = useState<any[]>([]);
   const [commentText, setCommentText] = useState("");
   const [hasLiked, setHasLiked] = useState(false);

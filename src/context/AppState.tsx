@@ -162,8 +162,19 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setDbActionCount(prev => prev + 1);
       }
     };
+    const handleCustomDbUpdate = () => {
+      setDbActionCount(prev => prev + 1);
+    };
+
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    window.addEventListener('nightverse_tags_updated', handleCustomDbUpdate);
+    window.addEventListener('nightverse_db_updated', handleCustomDbUpdate);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('nightverse_tags_updated', handleCustomDbUpdate);
+      window.removeEventListener('nightverse_db_updated', handleCustomDbUpdate);
+    };
   }, []);
 
   // Update browser favicon whenever systemSettings favicon changes

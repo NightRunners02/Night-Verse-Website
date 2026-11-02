@@ -2,35 +2,60 @@ import React, { useState } from "react";
 import { AlertTriangle, Trash2, X } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
-interface DeleteConfirmationModalProps {
+export interface DeleteConfirmationModalProps {
   isOpen: boolean;
-  onClose: () => void;
+  onClose?: () => void;
+  onCancel?: () => void;
   onConfirm: () => void;
-  title: string;
-  warningText: string;
-  itemDetails: React.ReactNode;
+  title?: string;
+  warningText?: string;
+  message?: string;
+  itemDetails?: React.ReactNode;
+  confirmText?: string;
+  confirmWord?: string;
 }
 
 export const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = ({
   isOpen,
   onClose,
+  onCancel,
   onConfirm,
-  title,
+  title = "Confirm Deletion",
   warningText,
+  message,
   itemDetails,
+  confirmText,
+  confirmWord = "HAPUS",
 }) => {
-  const [confirmText, setConfirmText] = useState("");
+  const [typedText, setTypedText] = useState("");
+
+  const handleClose = () => {
+    if (typeof onClose === "function") {
+      onClose();
+    } else if (typeof onCancel === "function") {
+      onCancel();
+    }
+  };
+
+  const handleConfirm = () => {
+    if (typeof onConfirm === "function") {
+      onConfirm();
+    }
+    handleClose();
+  };
 
   // Reset text when modal opens
   React.useEffect(() => {
     if (isOpen) {
-      setConfirmText("");
+      setTypedText("");
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const isConfirmed = confirmText === "HAPUS";
+  const targetWord = confirmText || confirmWord || "HAPUS";
+  const displayWarning = warningText || message || "Action cannot be undone.";
+  const isConfirmed = typedText.trim().toUpperCase() === targetWord.trim().toUpperCase();
 
   return (
     <AnimatePresence>
@@ -44,7 +69,7 @@ export const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = (
           initial={{ scale: 0.95, opacity: 0, y: 20 }}
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.95, opacity: 0, y: 20 }}
-          className="relative w-full max-w-[340px] xs:max-w-sm sm:max-w-md bg-slate-900 border border-rose-900/50 rounded-2xl shadow-2xl overflow-hidden"
+          className="relative w-full max-w-[340px] xs:max-w-sm sm:max-w-md bg-slate-900 border border-rose-900/50 rounded-2xl shadow-2xl overflow-hidden text-left"
         >
           {/* Header */}
           <div className="bg-rose-950/30 border-b border-rose-900/50 p-4 md:p-5 flex items-center justify-between">
@@ -53,7 +78,7 @@ export const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = (
               <h2 className="font-bold font-space text-sm md:text-base lg:text-lg tracking-tight">{title}</h2>
             </div>
             <button
-              onClick={onClose}
+              onClick={handleClose}
               className="text-slate-400 hover:text-white transition-colors p-1"
             >
               <X className="w-4.5 h-4.5" />
@@ -61,30 +86,32 @@ export const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = (
           </div>
 
           <div className="p-4 md:p-6 space-y-4 md:space-y-5">
-            <div className="bg-slate-950 rounded-xl p-3 md:p-4 border border-slate-800">
-              {itemDetails}
-            </div>
+            {itemDetails && (
+              <div className="bg-slate-950 rounded-xl p-3 md:p-4 border border-slate-800">
+                {itemDetails}
+              </div>
+            )}
 
             <div className="bg-rose-950/20 text-rose-400 p-3 md:p-4 rounded-xl border border-rose-900/40 text-[11px] md:text-xs leading-relaxed">
-              <strong>Warning:</strong> {warningText}
+              <strong>Warning:</strong> {displayWarning}
             </div>
 
             <div className="space-y-1.5">
               <label className="block text-[10px] font-mono text-slate-400 uppercase tracking-widest pl-1">
-                Type <strong>HAPUS</strong> to confirm
+                Type <strong>{targetWord}</strong> to confirm
               </label>
               <input
                 type="text"
-                value={confirmText}
-                onChange={(e) => setConfirmText(e.target.value)}
-                placeholder="HAPUS"
+                value={typedText}
+                onChange={(e) => setTypedText(e.target.value)}
+                placeholder={targetWord}
                 className="w-full bg-slate-950 border border-rose-900/50 focus:border-rose-500 focus:outline-none rounded-xl py-2 px-3 md:py-2.5 md:px-4 text-center font-mono text-slate-100 text-sm md:text-base tracking-[0.2em] transition-all"
               />
             </div>
 
             <div className="flex gap-2.5 pt-1.5">
               <button
-                onClick={onClose}
+                onClick={handleClose}
                 className="flex-1 py-2 px-3 md:py-2.5 md:px-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors cursor-pointer text-[11px] md:text-xs"
               >
                 Cancel
@@ -92,8 +119,7 @@ export const DeleteConfirmationModal: React.FC<DeleteConfirmationModalProps> = (
               <button
                 onClick={() => {
                   if (isConfirmed) {
-                    onConfirm();
-                    onClose();
+                    handleConfirm();
                   }
                 }}
                 disabled={!isConfirmed}

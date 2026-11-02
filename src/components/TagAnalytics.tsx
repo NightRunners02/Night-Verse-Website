@@ -48,6 +48,8 @@ export const TagAnalytics: React.FC = () => {
 
   const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN" || user?.role === "MODERATOR";
 
+  const [isSaving, setIsSaving] = useState(false);
+
   const fetchTagsData = () => {
     setIsRefreshing(true);
     const data = db.tags.getAll();
@@ -57,6 +59,11 @@ export const TagAnalytics: React.FC = () => {
 
   useEffect(() => {
     fetchTagsData();
+    const handleTagUpdate = () => {
+      fetchTagsData();
+    };
+    window.addEventListener("nightverse_tags_updated", handleTagUpdate);
+    return () => window.removeEventListener("nightverse_tags_updated", handleTagUpdate);
   }, [dbActionCount]);
 
   // Tab counters
@@ -158,7 +165,7 @@ export const TagAnalytics: React.FC = () => {
   };
 
   // Save Tag Submission (Handles Admin direct approval & User proposal)
-  const handleSaveTag = (e: React.FormEvent) => {
+  const handleSaveTag = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formName.trim()) {
       triggerToast("Input Error", "Please provide a valid tag name.", "error");
@@ -166,37 +173,49 @@ export const TagAnalytics: React.FC = () => {
     }
 
     const cleanName = formName.trim().toLowerCase().replace(/^#/, "");
+    setIsSaving(true);
 
-    if (editingTag) {
-      // Edit Tag
-      db.tags.update(editingTag.id, {
-        name: cleanName,
-        type: formType,
-        isAmbiguous: formIsAmbiguous,
-        status: editingTag.status || "APPROVED"
-      });
-      triggerToast("Tag Updated ✅", `Hashtag #${cleanName} has been updated in directory.`, "success");
-    } else {
-      // Create Tag
-      const defaultStatus: TagStatus = isAdmin ? "APPROVED" : "PENDING";
-      const created = db.tags.add({
-        name: cleanName,
-        type: formType,
-        isAmbiguous: formIsAmbiguous,
-        status: defaultStatus,
-        createdBy: user?.username || "NightAdmin"
-      });
-
-      if (defaultStatus === "APPROVED") {
-        triggerToast("Tag Added 🎉", `Hashtag #${cleanName} added as [${formType}].`, "success");
+    try {
+      if (editingTag) {
+        // Edit Tag
+        const updated = db.tags.update(editingTag.id, {
+          name: cleanName,
+          type: formType,
+          isAmbiguous: formIsAmbiguous,
+          status: editingTag.status || "APPROVED"
+        });
+        if (updated) {
+          triggerToast("Tag Updated ✅", `Hashtag #${cleanName} has been updated to [${formType}].`, "success");
+        } else {
+          triggerToast("Update Error ⚠️", `Could not find tag #${cleanName} to update.`, "error");
+        }
       } else {
-        triggerToast("Proposal Submitted 📤", `Hashtag #${cleanName} submitted for Admin review.`, "info");
-      }
-    }
+        // Create Tag
+        const defaultStatus: TagStatus = isAdmin ? "APPROVED" : "PENDING";
+        const created = db.tags.add({
+          name: cleanName,
+          type: formType,
+          isAmbiguous: formIsAmbiguous,
+          status: defaultStatus,
+          createdBy: user?.username || "NightAdmin"
+        });
 
-    setShowAddEditModal(false);
-    fetchTagsData();
-    triggerDBSync();
+        if (defaultStatus === "APPROVED") {
+          triggerToast("Tag Added 🎉", `Hashtag #${cleanName} added as [${formType}].`, "success");
+        } else {
+          triggerToast("Proposal Submitted 📤", `Hashtag #${cleanName} submitted for Admin review.`, "info");
+        }
+      }
+
+      setShowAddEditModal(false);
+      fetchTagsData();
+      triggerDBSync();
+    } catch (err: any) {
+      console.error(err);
+      triggerToast("Save Error ❌", err?.message || "Failed to save tag to database.", "error");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // Quick toggle ambiguous status from table
@@ -842,9 +861,16 @@ export const TagAnalytics: React.FC = () => {
                   </button>
                   <button 
                     type="submit"
-                    className="py-2.5 px-6 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg shadow-purple-900/30 transition-all active:scale-95"
+                    disabled={isSaving}
+                    className="py-2.5 px-6 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg shadow-purple-900/30 transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {editingTag ? "Save Changes" : "Create Tag"}
+                    {isSaving ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" /> Saving...
+                      </>
+                    ) : (
+                      <>{editingTag ? "Save Changes" : "Create Tag"}</>
+                    )}
                   </button>
                 </div>
 
@@ -1156,9 +1182,15 @@ export const TagAnalytics: React.FC = () => {
         <DeleteConfirmationModal
           isOpen={deleteModalOpen}
           title="Delete Tag"
-          message={`Are you sure you want to delete #${tagToDelete.name}? It will be removed from directory taxonomy.`}
+          warningText={`Are you sure you want to delete #${tagToDelete.name}? It will be removed from directory taxonomy.`}
+          itemDetails={
+            <div className="flex flex-col gap-1">
+              <span className="text-sm font-bold text-slate-200">Tag: #{tagToDelete.name}</span>
+              <span className="text-xs font-mono text-cyan-400">Category: {tagToDelete.type || "General"}</span>
+            </div>
+          }
           onConfirm={confirmDeleteTag}
-          onCancel={() => {
+          onClose={() => {
             setDeleteModalOpen(false);
             setTagToDelete(null);
           }}
@@ -1170,9 +1202,14 @@ export const TagAnalytics: React.FC = () => {
         <DeleteConfirmationModal
           isOpen={bulkDeleteModalOpen}
           title="Bulk Delete Tags"
-          message={`Are you sure you want to delete ${selectedTagsForBulk.length} selected tags?`}
+          warningText={`Are you sure you want to delete ${selectedTagsForBulk.length} selected tags?`}
+          itemDetails={
+            <div className="text-xs font-mono text-rose-400">
+              {selectedTagsForBulk.length} hashtags selected for global purge
+            </div>
+          }
           onConfirm={confirmBulkPurge}
-          onCancel={() => setBulkDeleteModalOpen(false)}
+          onClose={() => setBulkDeleteModalOpen(false)}
         />
       )}
 
