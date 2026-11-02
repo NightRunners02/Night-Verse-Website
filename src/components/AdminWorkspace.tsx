@@ -45,13 +45,24 @@ import {
   Globe,
   Upload,
   RotateCcw,
-  FileCheck
+  FileCheck,
+  Crown,
+  Trophy,
+  Award,
+  Plus,
+  Calendar,
+  Star,
+  Key,
+  Filter,
+  CheckCheck,
+  User as UserIcon
 } from "lucide-react";
 import { useAppState } from "../context/AppState.js";
-import { User, SystemSettings } from "../types.js";
+import type { User, SystemSettings, BadgeDefinition, UserBadgeAward, BadgeCategory } from "../types.js";
 import { motion } from "motion/react";
 import { DeleteConfirmationModal } from "./DeleteConfirmationModal.js";
 import { RoleBadge } from "./RoleBadge.js";
+import { TagAnalytics } from "./TagAnalytics.js";
 import { db } from "../lib/db.js";
 import { validateFaviconFile, DEFAULT_FAVICON_URL } from "../lib/favicon.js";
 
@@ -214,10 +225,36 @@ export const AdminWorkspace: React.FC = () => {
   const [bulkTagDeleteModalOpen, setBulkTagDeleteModalOpen] = useState(false);
 
   // Badge Management States
+  const [badgeSubSection, setBadgeSubSection] = useState<"clearance" | "catalog" | "history">("clearance");
   const [unlockBadgeModalOpen, setUnlockBadgeModalOpen] = useState(false);
-  const [selectedBadgeToUnlock, setSelectedBadgeToUnlock] = useState<string>("USER");
+  const [selectedBadgeToUnlock, setSelectedBadgeToUnlock] = useState<string>("verified-creator");
   const [badgeReason, setBadgeReason] = useState("");
   const [badgeDate, setBadgeDate] = useState(new Date().toISOString().split('T')[0]);
+  const [isUnlockingBadge, setIsUnlockingBadge] = useState(false);
+  const [createBadgeModalOpen, setCreateBadgeModalOpen] = useState(false);
+  const [allSystemBadges, setAllSystemBadges] = useState<BadgeDefinition[]>([]);
+  const [allBadgeAwards, setAllBadgeAwards] = useState<UserBadgeAward[]>([]);
+  const [badgeAuditSearch, setBadgeAuditSearch] = useState("");
+  const [selectedBadgeToManage, setSelectedBadgeToManage] = useState<BadgeDefinition | null>(null);
+  const [newBadgeForm, setNewBadgeForm] = useState<{
+    id: string;
+    name: string;
+    icon: string;
+    description: string;
+    category: BadgeCategory;
+    tier: number;
+    requirement: string;
+    colorScheme: string;
+  }>({
+    id: "",
+    name: "",
+    icon: "Shield",
+    description: "",
+    category: "COMMUNITY",
+    tier: 1,
+    requirement: "",
+    colorScheme: "purple"
+  });
 
   // Sync settings when context loaded
   useEffect(() => {
@@ -259,6 +296,8 @@ export const AdminWorkspace: React.FC = () => {
     setReportsList(allReports);
     setTagsStats(allTags);
     setSystemLogs(allLogs);
+    setAllSystemBadges(db.badges?.getAll ? db.badges.getAll() : []);
+    setAllBadgeAwards(db.badges?.getAwards ? db.badges.getAwards() : []);
 
     setPendingBlogs(allBlogs.filter(b => b.status === "PENDING"));
     setPendingPhotos(allPhotos.filter(p => p.status === "PENDING"));
@@ -408,59 +447,171 @@ export const AdminWorkspace: React.FC = () => {
     loadAllAdminMetrics();
   };
 
-  // Settings modification dispatch
-  const handleUnlockBadge = async () => {
-    if (!inspectedUser) return;
+  // Badge Management System: Hierarchical Permissions & Handlers
+  const canOperatorGrantBadge = (operatorRole?: string, badge?: BadgeDefinition): boolean => {
+    if (!operatorRole || !badge) return false;
+    if (operatorRole === "SUPER_ADMIN") return true; // Super Admin can grant ANY badge without exception
+    if (operatorRole === "ADMIN") {
+      // Admin can only grant badges BELOW Admin tier (Tier < 4: Verified, Contributor, VIP, etc.)
+      return badge.tier < 4 && badge.id !== "super-admin" && badge.id !== "administrator";
+    }
+    if (operatorRole === "MODERATOR") {
+      // Moderator can only grant badges BELOW Moderator tier (Tier < 3: Verified, Contributor, VIP, etc.)
+      return badge.tier < 3 && badge.id !== "super-admin" && badge.id !== "administrator" && badge.id !== "moderator";
+    }
+    return false;
+  };
+
+  const getBadgeIconComponent = (iconName?: string) => {
+    switch (iconName?.toLowerCase()) {
+      case "shieldalert": return ShieldAlert;
+      case "shieldcheck": return ShieldCheck;
+      case "shield": return Shield;
+      case "checkcircle2": return CheckCircle2;
+      case "trophy": return Trophy;
+      case "crown": return Crown;
+      case "sparkles": return Sparkles;
+      case "star": return Star;
+      case "award": return Award;
+      case "lock": return Lock;
+      case "user": default: return UserIcon;
+    }
+  };
+
+  const handleUnlockBadgeSubmit = async () => {
+    if (!inspectedUser || !user) return;
+    setIsUnlockingBadge(true);
 
     try {
-      let updatedRole = inspectedUser.role;
-      let updatedBadges = [...(inspectedUser.profile?.badges || [])];
-
-      // Logic mapping for badges
-      if (selectedBadgeToUnlock === "Administrator") {
-        updatedRole = "ADMIN";
-      } else if (selectedBadgeToUnlock === "Moderator") {
-        updatedRole = "MODERATOR";
-      } else if (selectedBadgeToUnlock === "User") {
-        updatedRole = "USER";
-        updatedBadges = []; // Clear all specific badges when resetting to user
-      } else {
-        // Other badges are profile badges
-        if (!updatedBadges.includes(selectedBadgeToUnlock)) {
-          updatedBadges.push(selectedBadgeToUnlock);
-        }
-      }
-
-      // Update user in DB
-      db.users.update(inspectedUser.id, {
-        role: updatedRole,
-        profile: {
-          ...inspectedUser.profile,
-          badges: updatedBadges
-        }
+      // Call backend database method with strict hierarchy enforcement
+      const result = db.badges.awardBadge({
+        operatorId: user.id,
+        operatorUsername: user.username,
+        operatorRole: user.role,
+        targetUserId: inspectedUser.id,
+        badgeId: selectedBadgeToUnlock,
+        reason: badgeReason.trim() || undefined,
+        date: badgeDate
       });
 
-      // Add audit log
-      db.logs.add("BADGE_MANAGEMENT", `${user?.username} assigned "${selectedBadgeToUnlock}" badge to @${inspectedUser.username}. Reason: ${badgeReason || "N/A"}`, user?.username || "SYSTEM");
+      if (!result.success) {
+        triggerToast("Badge Unlock Blocked 🚫", result.message, "error");
+        setIsUnlockingBadge(false);
+        return;
+      }
 
-      // Notify user
+      // Notify recipient
       createNotification({
         userId: inspectedUser.id,
-        title: "New Badge Unlocked",
-        message: `Congratulations! You've been granted the "${selectedBadgeToUnlock}" badge by ${user?.username}.`,
+        title: "New Badge Unlocked 🎉",
+        message: `Selamat! Anda telah dianugerahi badge "${result.award?.badgeName}" oleh @${user.username}.`,
         category: "SYSTEM",
         type: "BADGE_UNLOCK",
         link: "DASHBOARD:profile-settings"
       });
 
-      triggerToast("Badge Updated", `Successfully assigned ${selectedBadgeToUnlock} to @${inspectedUser.username}`, "success");
+      triggerToast("Badge Unlocked 🏆", result.message, "success");
       triggerDBSync();
+
+      // Refresh inspected user badges in place
+      const updatedUser = db.users.getById(inspectedUser.id);
+      if (updatedUser) {
+        setInspectedUser(updatedUser);
+      }
+      loadAllAdminMetrics();
       setUnlockBadgeModalOpen(false);
-      setInspectedUser(null);
       setBadgeReason("");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      triggerToast("Error", "Failed to update user badges.", "error");
+      triggerToast("Error", err.message || "Failed to unlock badge.", "error");
+    } finally {
+      setIsUnlockingBadge(false);
+    }
+  };
+
+  const handleRevokeBadge = (targetUserId: string, badgeId: string) => {
+    if (!user) return;
+    const result = db.badges.revokeBadge({
+      operatorRole: user.role,
+      operatorUsername: user.username,
+      targetUserId,
+      badgeId
+    });
+
+    if (!result.success) {
+      triggerToast("Revoke Failed ⚠️", result.message, "error");
+      return;
+    }
+
+    triggerToast("Badge Revoked", result.message, "info");
+    triggerDBSync();
+    const updatedUser = db.users.getById(targetUserId);
+    if (updatedUser && inspectedUser?.id === targetUserId) {
+      setInspectedUser(updatedUser);
+    }
+    loadAllAdminMetrics();
+  };
+
+  const handleCreateBadgeSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (user?.role !== "SUPER_ADMIN") {
+      triggerToast("Unauthorized", "Only Super Admin can define new badges.", "error");
+      return;
+    }
+
+    if (!newBadgeForm.id.trim() || !newBadgeForm.name.trim() || !newBadgeForm.description.trim()) {
+      triggerToast("Validation Error", "Please provide badge ID, name, and description.", "error");
+      return;
+    }
+
+    // Color scheme mappings
+    const colorMap: Record<string, { color: string; bgColor: string; borderColor: string }> = {
+      rose: { color: "text-rose-400", bgColor: "bg-rose-500/10", borderColor: "border-rose-500/30" },
+      purple: { color: "text-purple-400", bgColor: "bg-purple-500/10", borderColor: "border-purple-500/30" },
+      cyan: { color: "text-cyan-400", bgColor: "bg-cyan-500/10", borderColor: "border-cyan-500/30" },
+      blue: { color: "text-blue-400", bgColor: "bg-blue-500/10", borderColor: "border-blue-500/30" },
+      emerald: { color: "text-emerald-400", bgColor: "bg-emerald-500/10", borderColor: "border-emerald-500/30" },
+      amber: { color: "text-amber-400", bgColor: "bg-amber-500/10", borderColor: "border-amber-500/30" },
+      fuchsia: { color: "text-fuchsia-400", bgColor: "bg-fuchsia-500/10", borderColor: "border-fuchsia-500/30" }
+    };
+
+    const scheme = colorMap[newBadgeForm.colorScheme] || colorMap.purple;
+
+    try {
+      const badgeId = newBadgeForm.id.trim().toLowerCase().replace(/\s+/g, "-");
+      const newBadge: BadgeDefinition = {
+        id: badgeId,
+        name: newBadgeForm.name.trim(),
+        icon: newBadgeForm.icon,
+        description: newBadgeForm.description.trim(),
+        category: newBadgeForm.category,
+        tier: Number(newBadgeForm.tier),
+        status: "ACTIVE",
+        requirement: newBadgeForm.requirement.trim() || "Diberikan oleh pengelola NightVerse.",
+        createdAt: new Date().toISOString(),
+        color: scheme.color,
+        bgColor: scheme.bgColor,
+        borderColor: scheme.borderColor
+      };
+
+      db.badges.add(newBadge);
+      db.logs.add("BADGE_MANAGEMENT", `Super Admin @${user.username} created badge definition "${newBadge.name}" (Tier ${newBadge.tier})`, user.username);
+      triggerToast("Badge Created ✨", `New badge "${newBadge.name}" registered in system.`, "success");
+      triggerDBSync();
+      loadAllAdminMetrics();
+      setCreateBadgeModalOpen(false);
+      setNewBadgeForm({
+        id: "",
+        name: "",
+        icon: "Shield",
+        description: "",
+        category: "COMMUNITY",
+        tier: 1,
+        requirement: "",
+        colorScheme: "purple"
+      });
+    } catch (err: any) {
+      triggerToast("Creation Error", err.message || "Failed to create badge.", "error");
     }
   };
 
@@ -1242,328 +1393,7 @@ export const AdminWorkspace: React.FC = () => {
           </div>
 
           ) : (
-            // Centralized Hashtags Directory with max 10 tags per page as requested!
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fadeIn">
-              
-              <div className="lg:col-span-2 bg-slate-950 border border-slate-900 rounded-3xl p-6 space-y-5">
-                
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <div>
-                    <h3 className="text-base font-extrabold font-space text-slate-100 flex items-center gap-1.5">
-                      <Tag className="w-5 h-5 text-cyan-400" /> Hashtags Taxonomy Directory
-                    </h3>
-                    <p className="text-xs text-slate-400 mt-0.5">Unified tag taxonomy catalog. Filter keywords and jump across indices.</p>
-                  </div>
-
-                  <div className="w-full sm:w-64 relative">
-                    <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
-                    <input 
-                      type="text"
-                      placeholder="Fuzzy search tag name..."
-                      value={tagQuery}
-                      onChange={(e) => setTagQuery(e.target.value)}
-                      className="w-full text-xs pl-9 pr-4 py-1.5 bg-slate-900 border border-slate-850 rounded-xl focus:outline-none focus:border-cyan-400 text-slate-200"
-                    />
-                  </div>
-                </div>
-
-                {filteredTags.length > 0 && (
-                  <div className="flex items-center justify-between border-b border-slate-905 pb-2 text-[10px] font-mono text-slate-500 uppercase tracking-wider">
-                    <div className="flex items-center gap-4">
-                      <div className="flex items-center gap-3">
-                        <div 
-                          onClick={() => {
-                            const pageIds = paginatedAdminTags.map(t => t.id);
-                            const allOnPageSelected = pageIds.length > 0 && pageIds.every(id => selectedTagsForBulk.includes(id));
-                            if (allOnPageSelected) {
-                              setSelectedTagsForBulk(prev => prev.filter(id => !pageIds.includes(id)));
-                            } else {
-                              const newIds = pageIds.filter(id => !selectedTagsForBulk.includes(id));
-                              setSelectedTagsForBulk(prev => [...prev, ...newIds]);
-                            }
-                          }}
-                          className="flex items-center gap-2 cursor-pointer hover:text-white transition-colors p-1.5 hover:bg-slate-900 rounded-lg select-none"
-                        >
-                          {paginatedAdminTags.length > 0 && paginatedAdminTags.every(t => selectedTagsForBulk.includes(t.id)) ? (
-                            <CheckSquare className="w-4 h-4 text-cyan-400" />
-                          ) : (
-                            <Square className="w-4 h-4" />
-                          )}
-                          Select All (Page)
-                        </div>
-                        
-                        {filteredTags.length > paginatedAdminTags.length && (
-                          <button 
-                            onClick={() => {
-                              setSelectedTagsForBulk(filteredTags.map(t => t.id));
-                              triggerToast("Global Selection", `Selected all ${filteredTags.length} tags across all pages`, "info");
-                            }}
-                            className="text-cyan-400 hover:text-cyan-300 font-bold flex items-center gap-1 transition-colors"
-                          >
-                            <Library className="w-3 h-3" /> Select All {filteredTags.length}
-                          </button>
-                        )}
-                      </div>
-
-                      {selectedTagsForBulk.length > 0 && (
-                        <div className="flex items-center gap-3 pl-4 border-l border-slate-800 animate-in fade-in slide-in-from-left-2 duration-300">
-                          <span className="text-cyan-400 font-bold lowercase flex items-center gap-1.5">
-                            <span className="relative flex h-2 w-2">
-                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
-                              <span className="relative inline-flex rounded-full h-2 w-2 bg-cyan-500"></span>
-                            </span>
-                            {selectedTagsForBulk.length} items flagged
-                          </span>
-                          <button 
-                            onClick={() => setBulkTagDeleteModalOpen(true)}
-                            className="bg-rose-600/10 hover:bg-rose-600 text-rose-500 hover:text-white px-3 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1.5 transition-all outline-none border border-rose-600/20 hover:border-transparent "
-                          >
-                            <Trash2 className="w-3.5 h-3.5" /> Purge Selection
-                          </button>
-                          <button 
-                            onClick={() => setSelectedTagsForBulk([])}
-                            className="text-slate-500 hover:text-slate-300 transition-colors text-[10px] font-mono"
-                          >
-                            [CANCEL]
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    <span>
-                      Showing <strong className="text-slate-300">{(adminTagPage - 1) * tagsPerPage + 1}</strong> - <strong className="text-slate-300">{Math.min(adminTagPage * tagsPerPage, filteredTags.length)}</strong> of <strong className="text-cyan-400">{filteredTags.length}</strong> Tags
-                    </span>
-                    <span>Page <strong className="text-slate-300">{adminTagPage}</strong> of {adminTagPagesCount}</span>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {paginatedAdminTags.length === 0 ? (
-                    <div className="text-center col-span-2 py-12 text-slate-500 text-xs">
-                      No tags matched your filter criteria inside Taxonomy Registers.
-                    </div>
-                  ) : (
-                    paginatedAdminTags.map(tag => {
-                      const isBlocked = blockedTagsList.includes(tag.name);
-                      const isSelected = selectedTagsForBulk.includes(tag.id);
-                      return (
-                        <div key={tag.id} className={`p-3 bg-slate-900/15 border ${isSelected ? 'border-cyan-500/50' : 'border-slate-850 hover:border-slate-700/60'} rounded-2xl flex items-center justify-between transition-all group`}>
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div 
-                              onClick={() => {
-                                if (isSelected) setSelectedTagsForBulk(prev => prev.filter(id => id !== tag.id));
-                                else setSelectedTagsForBulk(prev => [...prev, tag.id]);
-                              }}
-                              className="cursor-pointer p-1.5 hover:bg-slate-900 rounded-lg transition-all text-slate-600 hover:text-cyan-400"
-                            >
-                              {isSelected ? <CheckSquare className="w-4 h-4 text-cyan-400" /> : <Square className="w-4 h-4" />}
-                            </div>
-                            <div className="min-w-0 space-y-1 text-left">
-                              <span className="font-mono font-bold text-slate-200 flex items-center gap-1">
-                                <Tag className="w-3.5 h-3.5 text-cyan-400" /> #{tag.name}
-                                {isBlocked && (
-                                  <span className="text-[8px] bg-red-950/50 text-red-500 border border-red-900/30 px-1.5 py-0.5 rounded font-mono font-extrabold uppercase">Blocked ⚠️</span>
-                                )}
-                              </span>
-                              <p className="text-[10px] text-slate-500 font-mono">Used {tag.count || tag.usageCount || 0} times across platform elements</p>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center gap-1 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-all">
-                            <button 
-                              type="button"
-                              onClick={() => setPreviewTag(tag)}
-                              className="p-1.5 text-purple-400 hover:bg-purple-950/20 text-[10px] font-bold rounded-lg cursor-pointer flex items-center gap-1 transition-colors"
-                              title="Preview tag analytics and usage"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              <span className="hidden lg:inline">Preview</span>
-                            </button>
-                            <button 
-                              type="button"
-                              onClick={() => {
-                                setSelectedTagToMod(tag);
-                                setRenameTagNewWord(tag.name);
-                              }}
-                              className="p-1.5 text-cyan-400 hover:bg-cyan-950/20 text-[10px] font-bold rounded-lg cursor-pointer flex items-center gap-1 transition-colors"
-                              title="Edit tag name or properties"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                              <span className="hidden lg:inline">Edit</span>
-                            </button>
-                            <button 
-                              type="button"
-                              onClick={() => setTagToDelete(tag)}
-                              className="p-1.5 text-rose-400 hover:bg-rose-950/20 text-[10px] font-bold rounded-lg cursor-pointer flex items-center gap-1 transition-colors"
-                              title="Ban/purge tag references globally"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span className="hidden lg:inline">Purge</span>
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-
-                {/* Animated Pagination Navigator Buttons Panel */}
-                {filteredTags.length > tagsPerPage && (
-                  <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-900 w-full">
-                    <p className="text-[11px] font-mono text-slate-400">
-                      Showing <strong className="text-cyan-400">{(adminTagPage - 1) * tagsPerPage + 1}</strong> - <strong className="text-cyan-400">{Math.min(adminTagPage * tagsPerPage, filteredTags.length)}</strong> of <strong className="text-purple-400">{filteredTags.length}</strong> Tags
-                    </p>
-
-                    <div className="flex flex-wrap items-center gap-1.5 bg-slate-950 p-1 border border-slate-900 rounded-2xl select-none">
-                      <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        transition={{ duration: 0.2 }}
-                        type="button"
-                        onClick={() => {
-                          setAdminTagPage(1);
-                          triggerToast("First Page", "Jumped directly to index origin [1]", "info");
-                        }}
-                        disabled={adminTagPage === 1}
-                        className="p-2 bg-slate-900 hover:bg-purple-950 border border-slate-850 hover:border-purple-900 text-slate-300 hover:text-white disabled:opacity-30 disabled:pointer-events-none rounded-xl transition-all duration-200 cursor-pointer flex items-center justify-center"
-                        title="First Page"
-                      >
-                        <ChevronsLeft className="w-4 h-4" />
-                      </motion.button>
-                      
-                      <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        transition={{ duration: 0.2 }}
-                        type="button"
-                        onClick={() => {
-                          setAdminTagPage(prev => Math.max(1, prev - 1));
-                        }}
-                        disabled={adminTagPage === 1}
-                        className="p-2 bg-slate-900 hover:bg-purple-950 border border-slate-850 hover:border-purple-900 text-slate-300 hover:text-white disabled:opacity-30 disabled:pointer-events-none rounded-xl transition-all duration-200 cursor-pointer flex items-center justify-center"
-                        title="Previous Page"
-                      >
-                        <ChevronLeft className="w-4 h-4" />
-                      </motion.button>
-
-                      <div className="px-3 py-1 bg-slate-900 rounded-xl text-xs font-black font-mono text-slate-300 border border-slate-850 min-w-[60px] text-center">
-                        {adminTagPage} / {adminTagPagesCount}
-                      </div>
-
-                      <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        transition={{ duration: 0.2 }}
-                        type="button"
-                        onClick={() => {
-                          setAdminTagPage(prev => Math.min(adminTagPagesCount, prev + 1));
-                        }}
-                        disabled={adminTagPage === adminTagPagesCount}
-                        className="p-2 bg-slate-900 hover:bg-purple-950 border border-slate-850 hover:border-purple-900 text-slate-300 hover:text-white disabled:opacity-30 disabled:pointer-events-none rounded-xl transition-all duration-200 cursor-pointer flex items-center justify-center"
-                        title="Next Page"
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </motion.button>
-
-                      <motion.button
-                        whileHover={{ scale: 1.05 }}
-                        whileTap={{ scale: 0.95 }}
-                        transition={{ duration: 0.2 }}
-                        type="button"
-                        onClick={() => {
-                          setAdminTagPage(adminTagPagesCount);
-                          triggerToast("Last Page", `Jumped directly to indexing coordinates terminal [${adminTagPagesCount}]`, "info");
-                        }}
-                        disabled={adminTagPage === adminTagPagesCount}
-                        className="p-2 bg-slate-900 hover:bg-purple-950 border border-slate-850 hover:border-purple-900 text-slate-300 hover:text-white disabled:opacity-30 disabled:pointer-events-none rounded-xl transition-all duration-200 cursor-pointer flex items-center justify-center"
-                        title="Last Page"
-                      >
-                        <ChevronsRight className="w-4 h-4" />
-                      </motion.button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Inline Rename Tag Panel */}
-                {selectedTagToMod && (
-                  <div className="p-4 bg-slate-900/30 border border-slate-800 rounded-2xl space-y-3 text-left">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-mono text-cyan-400 font-bold block">Morph Tag Label ID: #{selectedTagToMod.name}</span>
-                      <button type="button" onClick={() => setSelectedTagToMod(null)} className="text-[10px] text-slate-500 hover:text-white cursor-pointer select-none">Cancel</button>
-                    </div>
-                    <div className="flex gap-2">
-                      <input 
-                        type="text"
-                        placeholder="Type new lowercase single-word tag..."
-                        value={renameTagNewWord}
-                        onChange={(e) => setRenameTagNewWord(e.target.value)}
-                        className="text-xs bg-slate-950 border border-slate-800 rounded-lg py-2 px-3 text-slate-200 flex-1 focus:outline-none focus:border-cyan-400"
-                      />
-                      <button 
-                        type="button"
-                        onClick={handleRenameTag}
-                        className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:from-cyan-500 hover:to-cyan-400 text-white rounded-lg text-xs font-bold uppercase font-space"
-                      >
-                        Apply Rename
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-              </div>
-
-              {/* Tag merging / Consolidation sidebar block */}
-              <div className="bg-slate-950 border border-slate-900 rounded-3xl p-6 space-y-5 animate-fadeIn">
-                
-                <div>
-                  <h3 className="text-base font-extrabold font-space text-slate-100 flex items-center gap-1.5">
-                    <Sliders className="w-4 h-4 text-cyan-400" /> Hashtags Consolidation
-                  </h3>
-                  <p className="text-xs text-slate-400 mt-1">Consolidate duplicate tag footprints by merging them. All references of target source are combined under master labels.</p>
-                </div>
-
-                <div className="space-y-4">
-                  
-                  <div className="space-y-1.5 text-left">
-                    <label className="text-[10px] font-mono uppercase text-slate-500">Source Duplicate Tag label</label>
-                    <input 
-                      type="text"
-                      placeholder="e.g. digitalart"
-                      value={tagMergeSource}
-                      onChange={(e) => setTagMergeSource(e.target.value)}
-                      className="w-full text-xs font-mono py-2.5 px-3 bg-slate-900 border border-slate-850 rounded-xl focus:outline-none focus:border-cyan-400 text-slate-200"
-                    />
-                  </div>
-
-                  <div className="text-center text-xs text-slate-650 font-bold select-none">Consolidate ➔</div>
-
-                  <div className="space-y-1.5 text-left">
-                    <label className="text-[10px] font-mono uppercase text-slate-500">Target Master Master-Tag label</label>
-                    <input 
-                      type="text"
-                      placeholder="e.g. art"
-                      value={tagMergeTarget}
-                      onChange={(e) => setTagMergeTarget(e.target.value)}
-                      className="w-full text-xs font-mono py-2.5 px-3 bg-slate-900 border border-slate-850 rounded-xl focus:outline-none focus:border-cyan-400 text-slate-200"
-                    />
-                  </div>
-
-                  <button 
-                    type="button"
-                    onClick={handleMergeTags}
-                    className="w-full py-3.5 bg-gradient-to-r from-purple-650 to-indigo-650 hover:from-purple-550 hover:to-indigo-550 text-white font-space font-bold uppercase tracking-wider text-[10px] rounded-xl cursor-pointer"
-                  >
-                    CONSOLIDATE DUPLICATE LABELS
-                  </button>
-
-                </div>
-
-                <p className="text-[9.5px] text-slate-500 leading-relaxed italic text-center border-t border-slate-900/60 pt-3">
-                  Consolidating tag references triggers database migrations matching all active photos, blogs, and videos globally.
-                </p>
-
-              </div>
-
-            </div>
+            <TagAnalytics />
           )}
 
           {/* Inspection details modal profile drawer */}
@@ -2507,146 +2337,525 @@ export const AdminWorkspace: React.FC = () => {
         </div>
       )}
 
-      {/* 5b. BADGE MANAGEMENT PANEL */}
+      {/* 5b. BADGE MANAGEMENT SYSTEM */}
       {activeSubTab === "badges" && (
         <div className="space-y-6 animate-in fade-in duration-300" id="deck-badges-panel">
           
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
-            {/* User Badge Control Table */}
-            <div className="lg:col-span-2 bg-slate-900/40 border border-slate-800 rounded-3xl p-6 space-y-4 backdrop-blur-md">
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-base font-extrabold font-space text-slate-100 flex items-center gap-2">
-                    <ShieldCheck className="w-5 h-5 text-indigo-400" /> Badge Management System
-                  </h3>
-                  <p className="text-[10px] text-slate-400 mt-0.5 font-mono uppercase tracking-widest">Global user recognition registry</p>
-                </div>
-                
-                <div className="flex items-center gap-2 w-full sm:w-auto">
-                  <div className="relative flex-1 sm:w-64">
-                    <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
-                    <input 
-                      type="text"
-                      placeholder="Search name, username, email..."
-                      value={userQuery}
-                      onChange={(e) => setUserQuery(e.target.value)}
-                      className="w-full text-[11px] pl-9 pr-4 py-2 bg-slate-950 border border-slate-850 rounded-xl focus:outline-none focus:border-indigo-500 text-slate-200 font-mono transition-all"
-                    />
+          {/* Header & Sub-tab Navigation */}
+          <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 backdrop-blur-xl space-y-4 shadow-xl">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2.5 flex-wrap">
+                  <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+                    <ShieldCheck className="w-4 h-4" />
                   </div>
+                  <h3 className="text-lg font-black font-space text-white tracking-tight">
+                    Badge Management System
+                  </h3>
+
+                  {/* Hierarchical Authority Indicator */}
+                  {user?.role === "SUPER_ADMIN" ? (
+                    <span className="px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 text-[10px] font-mono font-bold flex items-center gap-1.5 shadow-sm">
+                      <ShieldAlert className="w-3 h-3" /> Root Super Admin • Otoritas Penuh (Tier 0 - 5)
+                    </span>
+                  ) : user?.role === "ADMIN" ? (
+                    <span className="px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-400 text-[10px] font-mono font-bold flex items-center gap-1.5 shadow-sm">
+                      <ShieldCheck className="w-3 h-3" /> Administrator • Akses Sub-Admin (Tier 0 - 3)
+                    </span>
+                  ) : (
+                    <span className="px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-[10px] font-mono font-bold flex items-center gap-1.5 shadow-sm">
+                      <Shield className="w-3 h-3" /> Moderator • Akses Sub-Moderator (Tier 0 - 2)
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 font-sans">
+                  Sistem otorisasi dan pengelolaan badge berbasis hierarki role, permission tier, dan audit trail transparan.
+                </p>
+              </div>
+
+              {/* Super Admin Action: Create New Badge */}
+              {user?.role === "SUPER_ADMIN" && (
+                <button
+                  type="button"
+                  onClick={() => setCreateBadgeModalOpen(true)}
+                  className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-space font-bold uppercase tracking-wider text-xs rounded-xl transition-all shadow-lg shadow-rose-900/30 active:scale-95 flex items-center gap-2 cursor-pointer self-start lg:self-auto"
+                >
+                  <Plus className="w-4 h-4" /> Create New Badge
+                </button>
+              )}
+            </div>
+
+            {/* Sub-section Switcher */}
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setBadgeSubSection("clearance")}
+                className={`px-4 py-2 rounded-xl text-xs font-bold font-space uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
+                  badgeSubSection === "clearance"
+                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/30"
+                    : "bg-slate-950/60 text-slate-400 hover:text-white border border-slate-800"
+                }`}
+              >
+                <Key className="w-3.5 h-3.5" /> User Badge Clearance & Unlock
+              </button>
+              <button
+                type="button"
+                onClick={() => setBadgeSubSection("catalog")}
+                className={`px-4 py-2 rounded-xl text-xs font-bold font-space uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
+                  badgeSubSection === "catalog"
+                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/30"
+                    : "bg-slate-950/60 text-slate-400 hover:text-white border border-slate-800"
+                }`}
+              >
+                <Award className="w-3.5 h-3.5" /> Badge Catalog & Definitions ({allSystemBadges.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setBadgeSubSection("history")}
+                className={`px-4 py-2 rounded-xl text-xs font-bold font-space uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
+                  badgeSubSection === "history"
+                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/30"
+                    : "bg-slate-950/60 text-slate-400 hover:text-white border border-slate-800"
+                }`}
+              >
+                <FileCheck className="w-3.5 h-3.5" /> Audit Trail & History ({allBadgeAwards.length})
+              </button>
+            </div>
+          </div>
+
+          {/* SUB-SECTION 1: USER BADGE CLEARANCE & UNLOCK */}
+          {badgeSubSection === "clearance" && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              
+              {/* Left Column: User Directory Selector (4 cols) */}
+              <div className="lg:col-span-4 bg-slate-900/40 border border-slate-800 rounded-3xl p-5 space-y-4 backdrop-blur-md flex flex-col max-h-[750px]">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                  <div>
+                    <h4 className="font-space font-bold text-xs text-white uppercase tracking-wider">
+                      Pilih Pengguna Target
+                    </h4>
+                    <p className="text-[10px] text-slate-500 font-mono mt-0.5">
+                      {filteredUsers.length} pengguna terindeks
+                    </p>
+                  </div>
+                  <span className="text-[9px] font-mono text-indigo-400 font-bold bg-indigo-950/50 px-2 py-0.5 rounded border border-indigo-900/40">
+                    Step 1
+                  </span>
+                </div>
+
+                {/* User Search Input */}
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Cari username, nama, email..."
+                    value={userQuery}
+                    onChange={(e) => setUserQuery(e.target.value)}
+                    className="w-full text-xs pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl focus:outline-none focus:border-indigo-500 text-slate-200 font-mono"
+                  />
+                </div>
+
+                {/* User List scrollable */}
+                <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                  {filteredUsers.length === 0 ? (
+                    <div className="text-center py-12 text-slate-600 font-mono text-xs">
+                      Tidak ada pengguna yang cocok.
+                    </div>
+                  ) : (
+                    filteredUsers.map((usr) => {
+                      const isSelected = inspectedUser?.id === usr.id;
+                      const badgeCount = usr.profile?.badges?.length || 0;
+
+                      return (
+                        <div
+                          key={usr.id}
+                          onClick={() => setInspectedUser(usr)}
+                          className={`p-3 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                            isSelected
+                              ? "bg-indigo-600/15 border-indigo-500 text-white shadow-md shadow-indigo-950/40"
+                              : "bg-slate-950/50 border-slate-850 hover:border-slate-700 text-slate-300"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <img
+                              src={usr.profile?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${usr.username}`}
+                              alt={usr.username}
+                              className="w-9 h-9 rounded-xl border border-slate-800 object-cover bg-slate-900 shrink-0"
+                            />
+                            <div className="min-w-0">
+                              <div className="font-space font-bold text-xs truncate flex items-center gap-1.5">
+                                <span>@{usr.username}</span>
+                                {usr.role === "SUPER_ADMIN" && (
+                                  <span className="text-[8px] bg-rose-500/20 text-rose-400 border border-rose-500/30 px-1 rounded font-mono font-bold">ROOT</span>
+                                )}
+                              </div>
+                              <p className="text-[10px] text-slate-500 font-mono truncate">{usr.email}</p>
+                            </div>
+                          </div>
+
+                          <div className="text-right shrink-0 space-y-1">
+                            <RoleBadge role={usr.role} size="xs" />
+                            <div className="text-[9px] font-mono text-indigo-400 font-bold">
+                              {badgeCount} badge{badgeCount !== 1 ? 's' : ''}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
+              {/* Right Column: Clearance Console for Target User (8 cols) */}
+              <div className="lg:col-span-8 bg-slate-900/40 border border-slate-800 rounded-3xl p-6 space-y-6 backdrop-blur-md">
+                {!inspectedUser ? (
+                  <div className="py-24 text-center space-y-3">
+                    <div className="w-16 h-16 rounded-3xl bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-600 mx-auto">
+                      <Key className="w-8 h-8" />
+                    </div>
+                    <h4 className="font-space font-black text-base text-slate-300 uppercase tracking-wider">
+                      Pilih Pengguna untuk Memulai Otorisasi Badge
+                    </h4>
+                    <p className="text-xs text-slate-500 max-w-md mx-auto font-sans">
+                      Klik salah satu pengguna pada daftar sebelah kiri untuk meninjau badge saat ini dan memberikan (unlock) badge sesuai batas tingkatan kewenangan Anda.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {/* User Header Profile Card */}
+                    <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-4">
+                        <img
+                          src={inspectedUser.profile?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${inspectedUser.username}`}
+                          alt={inspectedUser.username}
+                          className="w-14 h-14 rounded-2xl border border-indigo-500/30 object-cover bg-slate-900 shadow-md"
+                        />
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-space font-black text-base text-white">
+                              {inspectedUser.profile?.fullName || inspectedUser.username}
+                            </h4>
+                            <span className="text-xs text-indigo-400 font-mono">@{inspectedUser.username}</span>
+                            <RoleBadge role={inspectedUser.role} size="sm" />
+                          </div>
+                          <p className="text-xs text-slate-400 font-sans line-clamp-1">
+                            {inspectedUser.profile?.bio || "Warga komunitas NightVerse."}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="text-left sm:text-right shrink-0 space-y-1 bg-slate-900/80 p-3 rounded-xl border border-slate-850">
+                        <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">User ID:</span>
+                        <span className="text-xs font-mono font-bold text-slate-300">{inspectedUser.id}</span>
+                      </div>
+                    </div>
+
+                    {/* Current Badges Acquired */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono text-indigo-400 uppercase tracking-widest font-black flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                          Badge yang Saat Ini Dimiliki ({inspectedUser.profile?.badges?.length || 0})
+                        </span>
+                        <span className="text-[9px] font-mono text-slate-500 italic">
+                          Accolade badge tidak otomatis mengubah hak akses RBAC
+                        </span>
+                      </div>
+
+                      <div className="p-3.5 bg-slate-950/70 border border-slate-850 rounded-2xl flex flex-wrap gap-2 min-h-[50px] items-center">
+                        {(!inspectedUser.profile?.badges || inspectedUser.profile.badges.length === 0) ? (
+                          <span className="text-xs font-mono text-slate-600 italic">
+                            Pengguna belum memiliki badge khusus tambahan.
+                          </span>
+                        ) : (
+                          inspectedUser.profile.badges.map((bName) => {
+                            const badgeDef = allSystemBadges.find(b => b.name.toLowerCase() === bName.toLowerCase() || b.id.toLowerCase() === bName.toLowerCase());
+                            const canRevoke = canOperatorGrantBadge(user?.role, badgeDef || { tier: 0 } as any);
+
+                            return (
+                              <div
+                                key={bName}
+                                className="px-3 py-1 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs font-bold font-space flex items-center gap-2 shadow-sm"
+                              >
+                                <span>{bName}</span>
+                                {canRevoke && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRevokeBadge(inspectedUser.id, bName)}
+                                    title={`Cabut badge ${bName}`}
+                                    className="w-4 h-4 rounded-full bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white flex items-center justify-center transition-all cursor-pointer"
+                                  >
+                                    <X className="w-2.5 h-2.5" />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Badge Unlock Matrix */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-black flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                          Katalog Badge & Status Unlock untuk @{inspectedUser.username}
+                        </span>
+                        <span className="text-[9px] font-mono text-slate-500">
+                          {allSystemBadges.length} Jenis Tersedia
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                        {allSystemBadges.map((b) => {
+                          const Icon = getBadgeIconComponent(b.icon);
+                          const isAlreadyUnlocked = inspectedUser.profile?.badges?.some(
+                            ub => ub.toLowerCase() === b.id.toLowerCase() || ub.toLowerCase() === b.name.toLowerCase()
+                          );
+                          const hasTierAuthority = canOperatorGrantBadge(user?.role, b);
+
+                          return (
+                            <div
+                              key={b.id}
+                              className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
+                                isAlreadyUnlocked
+                                  ? "bg-emerald-950/15 border-emerald-500/30 shadow-md"
+                                  : hasTierAuthority
+                                  ? "bg-slate-950/80 border-slate-800 hover:border-indigo-500/40"
+                                  : "bg-slate-950/30 border-slate-900 opacity-60"
+                              }`}
+                            >
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2.5">
+                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${b.bgColor || "bg-indigo-500/10"} ${b.color || "text-indigo-400"} border ${b.borderColor || "border-indigo-500/20"}`}>
+                                      <Icon className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                      <h5 className="font-space font-bold text-xs text-white leading-tight">{b.name}</h5>
+                                      <span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider">
+                                        Tier {b.tier} • {b.category}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Tier Badge */}
+                                  <span className={`px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase tracking-wider ${
+                                    b.tier >= 5 ? "bg-rose-500/20 text-rose-300 border border-rose-500/30" :
+                                    b.tier >= 4 ? "bg-purple-500/20 text-purple-300 border border-purple-500/30" :
+                                    b.tier >= 3 ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/30" :
+                                    b.tier >= 2 ? "bg-blue-500/20 text-blue-300 border border-blue-500/30" :
+                                    "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
+                                  }`}>
+                                    {b.tier === 5 ? "ROOT ADMIN" : b.tier === 4 ? "ADMIN" : b.tier === 3 ? "MOD" : `TIER ${b.tier}`}
+                                  </span>
+                                </div>
+
+                                <p className="text-[11px] text-slate-400 font-sans line-clamp-2 leading-relaxed">
+                                  {b.description}
+                                </p>
+                              </div>
+
+                              {/* Action Button: States LOCKED / UNLOCKING / UNLOCKED */}
+                              <div className="pt-3 mt-3 border-t border-slate-900 flex items-center justify-between gap-2">
+                                {isAlreadyUnlocked ? (
+                                  <button
+                                    disabled
+                                    className="w-full py-2 bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 font-space font-bold text-[10px] uppercase rounded-xl flex items-center justify-center gap-1.5 cursor-default shadow-sm"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span>UNLOCKED</span>
+                                  </button>
+                                ) : !hasTierAuthority ? (
+                                  <div className="w-full py-2 bg-slate-900/60 border border-slate-850 text-slate-500 font-mono text-[9px] uppercase rounded-xl flex items-center justify-center gap-1.5 cursor-not-allowed text-center">
+                                    <Lock className="w-3 h-3 text-slate-600" />
+                                    <span>
+                                      {b.tier >= 5 ? "Memerlukan Super Admin" : b.tier >= 4 ? "Memerlukan Super Admin" : "Memerlukan Admin"}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedBadgeToUnlock(b.id);
+                                      setUnlockBadgeModalOpen(true);
+                                    }}
+                                    className="w-full py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-space font-bold text-[10px] uppercase tracking-wider rounded-xl transition-all shadow-md shadow-indigo-900/25 active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                                  >
+                                    <Key className="w-3 h-3" />
+                                    <span>UNLOCK BADGE</span>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* SUB-SECTION 2: BADGE CATALOG & DEFINITIONS */}
+          {badgeSubSection === "catalog" && (
+            <div className="bg-slate-900/40 border border-slate-800 rounded-3xl p-6 space-y-6 backdrop-blur-md">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                <div>
+                  <h4 className="font-space font-black text-sm text-white uppercase tracking-wider flex items-center gap-2">
+                    <Award className="w-4 h-4 text-indigo-400" />
+                    Katalog Registry Seluruh Badge ({allSystemBadges.length})
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Definisi badge resmi platform beserta tingkat kewenangan hierarki (tier) dan persyaratan perolehannya.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {allSystemBadges.map((b) => {
+                  const Icon = getBadgeIconComponent(b.icon);
+
+                  return (
+                    <div
+                      key={b.id}
+                      className={`p-5 rounded-3xl border ${b.bgColor || "bg-indigo-500/10"} ${b.borderColor || "border-indigo-500/20"} shadow-lg flex flex-col justify-between space-y-4`}
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className={`p-3 rounded-2xl border ${b.borderColor || "border-indigo-500/30"} bg-slate-950/70`}>
+                            <Icon className={`w-6 h-6 ${b.color || "text-indigo-400"}`} />
+                          </div>
+                          <div className="text-right">
+                            <span className="text-[10px] font-mono font-bold text-slate-300 bg-slate-900 px-2 py-0.5 rounded border border-slate-800 uppercase block">
+                              Tier {b.tier}
+                            </span>
+                            <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest mt-1 block">
+                              {b.category}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <h4 className="font-space font-black text-base text-white">{b.name}</h4>
+                          <span className="text-[10px] font-mono text-indigo-400">ID: {b.id}</span>
+                          <p className="text-xs text-slate-400 mt-2 font-sans leading-relaxed">{b.description}</p>
+                        </div>
+                      </div>
+
+                      <div className="pt-3 border-t border-slate-800/80 space-y-2">
+                        <div className="text-[10px] text-slate-400 font-sans leading-relaxed bg-slate-950/60 p-2.5 rounded-xl border border-slate-850">
+                          <strong className="text-indigo-300 block mb-0.5 font-mono text-[9px] uppercase tracking-wider">Persyaratan:</strong>
+                          {b.requirement || "Melalui peninjauan pengelola NightVerse."}
+                        </div>
+                        <div className="flex items-center justify-between text-[9px] font-mono text-slate-500 pt-1">
+                          <span>Status: <strong className="text-emerald-400">{b.status}</strong></span>
+                          <span>Dibuat: {new Date(b.createdAt).toLocaleDateString()}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* SUB-SECTION 3: AUDIT TRAIL & HISTORY */}
+          {badgeSubSection === "history" && (
+            <div className="bg-slate-900/40 border border-slate-800 rounded-3xl p-6 space-y-5 backdrop-blur-md">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                <div>
+                  <h4 className="font-space font-black text-sm text-white uppercase tracking-wider flex items-center gap-2">
+                    <FileCheck className="w-4 h-4 text-emerald-400" />
+                    Riwayat & Log Pemberian Badge ({allBadgeAwards.length})
+                  </h4>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Catatan audit setiap aktivitas pemberian badge kepada pengguna di ekosistem NightVerse.
+                  </p>
+                </div>
+
+                <div className="relative w-full sm:w-64">
+                  <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
+                  <input
+                    type="text"
+                    placeholder="Filter penerima, badge, granter..."
+                    value={badgeAuditSearch}
+                    onChange={(e) => setBadgeAuditSearch(e.target.value)}
+                    className="w-full text-xs pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl focus:outline-none focus:border-indigo-500 text-slate-200 font-mono"
+                  />
+                </div>
+              </div>
+
+              {/* Table */}
               <div className="overflow-x-auto custom-scrollbar">
-                <table className="w-full text-left text-xs border-collapse min-w-[600px]">
+                <table className="w-full text-left text-xs border-collapse min-w-[700px]">
                   <thead>
                     <tr className="border-b border-slate-800 text-[10px] uppercase font-mono text-slate-500 select-none">
-                      <th className="py-4 px-2">User Entity</th>
-                      <th className="py-4">Current Badges</th>
-                      <th className="py-4">Access Role</th>
-                      <th className="py-4 text-right pr-4">Permissions</th>
+                      <th className="py-3 px-3">Waktu & Tanggal</th>
+                      <th className="py-3 px-3">Penerima Badge</th>
+                      <th className="py-3 px-3">Badge Diberikan</th>
+                      <th className="py-3 px-3">Diberikan Oleh</th>
+                      <th className="py-3 px-3">Catatan / Alasan</th>
+                      <th className="py-3 px-3 text-right">Status</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-850">
-                    {filteredUsers.length === 0 ? (
-                      <tr>
-                        <td colSpan={4} className="py-16 text-center text-slate-500 font-mono italic">No user indices matched your current search vector.</td>
-                      </tr>
-                    ) : (
-                      filteredUsers.map(usr => (
-                        <tr key={usr.id} className="hover:bg-slate-800/20 transition-colors group">
-                          <td className="py-4 px-2">
-                            <div className="flex items-center gap-3">
-                              <img 
-                                src={usr.profile?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${usr.username}`} 
-                                className="w-9 h-9 rounded-xl border border-slate-800 bg-slate-900 object-cover" 
-                                alt="avatar" 
-                              />
-                              <div>
-                                <div className="font-bold text-slate-200 text-sm">@{usr.username}</div>
-                                <div className="text-[10px] text-slate-500 font-mono">{usr.email}</div>
-                              </div>
+                    {allBadgeAwards
+                      .filter(a => {
+                        if (!badgeAuditSearch.trim()) return true;
+                        const q = badgeAuditSearch.toLowerCase();
+                        return a.username.toLowerCase().includes(q) ||
+                               a.badgeName.toLowerCase().includes(q) ||
+                               a.grantedByUsername.toLowerCase().includes(q) ||
+                               (a.reason && a.reason.toLowerCase().includes(q));
+                      })
+                      .map((award) => (
+                        <tr key={award.id} className="hover:bg-slate-800/20 transition-colors">
+                          <td className="py-3 px-3 text-[10px] font-mono text-slate-400">
+                            {new Date(award.grantedAt).toLocaleString()}
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className="font-space font-bold text-xs text-indigo-300">
+                              @{award.username}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className="px-2.5 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-[10px] font-bold font-space inline-flex items-center gap-1.5 shadow-sm">
+                              <Award className="w-3 h-3 text-indigo-400" />
+                              {award.badgeName}
+                              <span className="text-[8px] opacity-70 font-mono">T{award.badgeTier}</span>
+                            </span>
+                          </td>
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono text-xs text-slate-300">@{award.grantedByUsername}</span>
+                              <RoleBadge role={award.grantedByRole} size="xs" />
                             </div>
                           </td>
-                          <td className="py-4">
-                            <div className="flex flex-wrap gap-1.5">
-                              {/* Display all roles/badges */}
-                              <RoleBadge role={usr.role} size="sm" />
-                              {usr.profile?.badges?.map(b => (
-                                <span key={b} className="px-2 py-0.5 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-md text-[9px] font-black uppercase tracking-tighter shadow-sm">
-                                  {b}
-                                </span>
-                              ))}
-                              {(!usr.profile?.badges || usr.profile.badges.length === 0) && usr.role === "USER" && (
-                                <span className="px-2 py-0.5 bg-slate-800/50 text-slate-500 rounded-md text-[9px] font-black uppercase tracking-tighter">
-                                  Standard
-                                </span>
-                              )}
-                            </div>
+                          <td className="py-3 px-3 text-[11px] text-slate-400 font-sans max-w-[200px] truncate" title={award.reason}>
+                            {award.reason || "-"}
                           </td>
-                          <td className="py-4 text-[10px] font-mono text-slate-400 uppercase tracking-widest">{usr.role}</td>
-                          <td className="py-4 text-right pr-4">
-                            <button 
-                              onClick={() => {
-                                if (usr.role === "SUPER_ADMIN" && user?.role !== "SUPER_ADMIN") {
-                                  triggerToast("Access Denied", "Only Super Administrators can manage Super Admin credentials.", "error");
-                                  return;
-                                }
-                                if (usr.role === "ADMIN" && user?.role !== "SUPER_ADMIN") {
-                                  triggerToast("Access Denied", "Only Super Administrators can manage Administrator credentials.", "error");
-                                  return;
-                                }
-                                setInspectedUser(usr);
-                                setUnlockBadgeModalOpen(true);
-                              }}
-                              className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold text-[10px] uppercase transition-all shadow-lg shadow-indigo-900/30 active:scale-95 cursor-pointer"
-                            >
-                              Unlock Badge
-                            </button>
+                          <td className="py-3 px-3 text-right">
+                            <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full text-[9px] font-mono font-bold">
+                              SUCCESS
+                            </span>
                           </td>
                         </tr>
-                      ))
+                      ))}
+                    {allBadgeAwards.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-slate-500 font-mono italic">
+                          Belum ada riwayat aktivitas pemberian badge yang tercatat.
+                        </td>
+                      </tr>
                     )}
                   </tbody>
                 </table>
               </div>
             </div>
-
-            {/* Activity Log Side Panel */}
-            <div className="bg-slate-900/40 border border-slate-800 rounded-3xl p-6 flex flex-col space-y-5 backdrop-blur-md">
-              <div>
-                <span className="text-[9px] uppercase font-mono tracking-[0.2em] text-indigo-400 font-black flex items-center gap-2">
-                  <div className="w-1 h-1 rounded-full bg-indigo-500 animate-pulse"></div>
-                  Badge Activity Records
-                </span>
-                <h3 className="text-lg font-black font-space text-slate-100 mt-2 uppercase">Audit Trail</h3>
-              </div>
-
-              <div className="flex-1 overflow-y-auto max-h-[600px] space-y-3 custom-scrollbar pr-1">
-                {systemLogs.filter(l => l.action === "BADGE_MANAGEMENT").length === 0 ? (
-                  <div className="py-20 flex flex-col items-center justify-center text-center opacity-40">
-                    <ShieldCheck className="w-10 h-10 text-slate-600 mb-3" />
-                    <p className="text-[10px] text-slate-500 font-mono uppercase tracking-widest">No signals detected</p>
-                  </div>
-                ) : (
-                  systemLogs.filter(l => l.action === "BADGE_MANAGEMENT").map(log => (
-                    <div key={log.id} className="text-[10px] p-4 bg-slate-950/50 border border-slate-800 rounded-2xl space-y-2 hover:border-indigo-500/30 transition-colors">
-                      <div className="flex items-center justify-between border-b border-slate-800/50 pb-1.5">
-                        <span className="text-indigo-400 font-black uppercase tracking-tighter">System Event</span>
-                        <span className="text-[8px] text-slate-600 font-mono">{new Date(log.timestamp).toLocaleTimeString()}</span>
-                      </div>
-                      <p className="text-slate-300 leading-relaxed font-sans">{log.details}</p>
-                      <div className="flex items-center justify-between text-[9px] mt-1 pt-1 border-t border-slate-800/30">
-                        <span className="text-slate-500 uppercase tracking-widest font-mono">OP: @{log.operator}</span>
-                        <span className="text-slate-600">{new Date(log.timestamp).toLocaleDateString()}</span>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-
-          </div>
+          )}
 
         </div>
       )}
@@ -3596,97 +3805,300 @@ export const AdminWorkspace: React.FC = () => {
         }
       />
 
-      {/* Unlock Badge Modal */}
-      {unlockBadgeModalOpen && inspectedUser && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
-                  <ShieldCheck className="w-6 h-6 text-indigo-400" />
+      {/* Upgraded Unlock Badge Modal */}
+      {unlockBadgeModalOpen && inspectedUser && (() => {
+        const targetBadge = allSystemBadges.find(b => b.id.toLowerCase() === selectedBadgeToUnlock.toLowerCase() || b.name.toLowerCase() === selectedBadgeToUnlock.toLowerCase());
+        const hasPermission = canOperatorGrantBadge(user?.role, targetBadge);
+        const Icon = getBadgeIconComponent(targetBadge?.icon);
+
+        return (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+            <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="p-6 border-b border-slate-800 bg-slate-900/60 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+                    <Key className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold font-space text-white uppercase tracking-tight">Otorisasi & Unlock Badge</h3>
+                    <p className="text-[10px] text-slate-400 font-mono">Pemberian kredensial kepada @{inspectedUser.username}</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="font-bold font-space text-slate-100 uppercase tracking-tight">Unlock User Badge</h3>
-                  <p className="text-[10px] text-slate-500 font-mono">Assigning credentials to @{inspectedUser.username}</p>
+                <button 
+                  onClick={() => setUnlockBadgeModalOpen(false)} 
+                  disabled={isUnlockingBadge}
+                  className="text-slate-500 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-5">
+                {/* Target Badge Card Preview */}
+                {targetBadge && (
+                  <div className={`p-4 rounded-2xl border ${targetBadge.bgColor || "bg-indigo-500/10"} ${targetBadge.borderColor || "border-indigo-500/30"} flex items-center gap-3.5 shadow-md`}>
+                    <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-850 shrink-0">
+                      <Icon className={`w-6 h-6 ${targetBadge.color || "text-indigo-400"}`} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-space font-black text-sm text-white">{targetBadge.name}</h4>
+                        <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 uppercase font-bold">
+                          Tier {targetBadge.tier} • {targetBadge.category}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1 font-sans line-clamp-2">{targetBadge.description}</p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Role Permission Check Warning */}
+                {!hasPermission && (
+                  <div className="p-3.5 rounded-2xl bg-rose-950/20 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2.5">
+                    <AlertTriangle className="w-5 h-5 shrink-0 text-rose-400" />
+                    <span>
+                      Peringatan: Tingkat role Anda ({user?.role}) tidak memiliki izin untuk memberikan badge Tier {targetBadge?.tier || 0}. Otoritas ditolak oleh sistem.
+                    </span>
+                  </div>
+                )}
+
+                {/* Target User Info */}
+                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <img 
+                      src={inspectedUser.profile?.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${inspectedUser.username}`} 
+                      className="w-7 h-7 rounded-lg border border-slate-800 object-cover" 
+                      alt="avatar" 
+                    />
+                    <span className="text-xs font-bold text-slate-200">Penerima: @{inspectedUser.username}</span>
+                  </div>
+                  <RoleBadge role={inspectedUser.role} size="xs" />
+                </div>
+
+                {/* Reason Input */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest block font-bold">
+                    Alasan / Memo Pemberian (Opsional)
+                  </label>
+                  <textarea 
+                    placeholder="Contoh: Diberikan atas kontribusi portofolio visual dan karya bertema neon..."
+                    value={badgeReason}
+                    onChange={(e) => setBadgeReason(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 min-h-[70px] resize-none"
+                  />
+                </div>
+
+                {/* Date & Granter */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Tanggal Pemberian</label>
+                    <input 
+                      type="date"
+                      value={badgeDate}
+                      onChange={(e) => setBadgeDate(e.target.value)}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 focus:outline-none"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Pemberi Kredensial</label>
+                    <div className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-indigo-400 font-mono font-bold truncate">
+                      @{user?.username} ({user?.role})
+                    </div>
+                  </div>
                 </div>
               </div>
-              <button onClick={() => setUnlockBadgeModalOpen(false)} className="text-slate-500 hover:text-white transition-colors cursor-pointer">
+
+              <div className="p-6 bg-slate-950/60 border-t border-slate-800 flex gap-3">
+                <button 
+                  type="button"
+                  disabled={isUnlockingBadge}
+                  onClick={() => setUnlockBadgeModalOpen(false)}
+                  className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs uppercase rounded-xl transition-all active:scale-95 cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button 
+                  type="button"
+                  disabled={!hasPermission || isUnlockingBadge}
+                  onClick={handleUnlockBadgeSubmit}
+                  className="flex-[2] py-3 bg-indigo-600 hover:bg-indigo-500 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-bold text-xs uppercase rounded-xl transition-all active:scale-95 shadow-lg shadow-indigo-900/30 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {isUnlockingBadge ? (
+                    <>
+                      <RotateCcw className="w-4 h-4 animate-spin" />
+                      <span>UNLOCKING...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Key className="w-4 h-4" />
+                      <span>CONFIRM & UNLOCK BADGE</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Super Admin: Create New Badge Modal */}
+      {createBadgeModalOpen && user?.role === "SUPER_ADMIN" && (
+        <div className="fixed inset-0 z-[125] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+          <div className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-slate-800 bg-slate-900/70 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
+                  <Plus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold font-space text-white uppercase tracking-tight">Create New Badge Definition</h3>
+                  <p className="text-[10px] text-slate-400 font-mono">Super Admin Root Configuration Panel</p>
+                </div>
+              </div>
+              <button onClick={() => setCreateBadgeModalOpen(false)} className="text-slate-500 hover:text-white transition-colors cursor-pointer">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-6 space-y-6">
-              <div className="space-y-2">
-                <label className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Select Target Badge</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {[
-                    { id: "Administrator", label: "Administrator", role: "ADMIN" },
-                    { id: "Moderator", label: "Moderator", role: "MODERATOR" },
-                    { id: "Verified Creator", label: "Verified", role: "USER" },
-                    { id: "Contributor", label: "Contributor", role: "USER" },
-                    { id: "VIP", label: "VIP", role: "USER" },
-                    { id: "User", label: "Reset to User", role: "USER" }
-                  ].map(b => (
+            <form onSubmit={handleCreateBadgeSubmit} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto custom-scrollbar">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Badge ID (Unique Slug)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. cyber-legend"
+                    value={newBadgeForm.id}
+                    onChange={(e) => setNewBadgeForm(p => ({ ...p, id: e.target.value.toLowerCase().replace(/\s+/g, '-') }))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-rose-500 outline-none font-mono"
+                    required
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Badge Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Cyber Legend"
+                    value={newBadgeForm.name}
+                    onChange={(e) => setNewBadgeForm(p => ({ ...p, name: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white focus:border-rose-500 outline-none font-space font-bold"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Icon</label>
+                  <select
+                    value={newBadgeForm.icon}
+                    onChange={(e) => setNewBadgeForm(p => ({ ...p, icon: e.target.value }))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-rose-500 outline-none font-mono cursor-pointer"
+                  >
+                    <option value="ShieldCheck">ShieldCheck</option>
+                    <option value="ShieldAlert">ShieldAlert</option>
+                    <option value="Shield">Shield</option>
+                    <option value="CheckCircle2">CheckCircle2</option>
+                    <option value="Trophy">Trophy</option>
+                    <option value="Crown">Crown</option>
+                    <option value="Sparkles">Sparkles</option>
+                    <option value="Star">Star</option>
+                    <option value="Award">Award</option>
+                    <option value="User">User</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Kategori</label>
+                  <select
+                    value={newBadgeForm.category}
+                    onChange={(e) => setNewBadgeForm(p => ({ ...p, category: e.target.value as BadgeCategory }))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-rose-500 outline-none font-mono cursor-pointer"
+                  >
+                    <option value="COMMUNITY">COMMUNITY</option>
+                    <option value="ACHIEVEMENT">ACHIEVEMENT</option>
+                    <option value="SPECIAL">SPECIAL</option>
+                    <option value="ROLE">ROLE</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Tier / Hierarki</label>
+                  <select
+                    value={newBadgeForm.tier}
+                    onChange={(e) => setNewBadgeForm(p => ({ ...p, tier: Number(e.target.value) }))}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:border-rose-500 outline-none font-mono cursor-pointer"
+                  >
+                    <option value="5">Tier 5 (Super Admin Only)</option>
+                    <option value="4">Tier 4 (Admin Level)</option>
+                    <option value="3">Tier 3 (Moderator Level)</option>
+                    <option value="2">Tier 2 (Verified Level)</option>
+                    <option value="1">Tier 1 (Contributor Level)</option>
+                    <option value="0">Tier 0 (VIP / Member)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Color Theme</label>
+                <div className="flex flex-wrap gap-2">
+                  {["purple", "rose", "cyan", "blue", "emerald", "amber", "fuchsia"].map((c) => (
                     <button
-                      key={b.id}
-                      onClick={() => setSelectedBadgeToUnlock(b.id)}
-                      disabled={b.id === "Administrator" && user?.role !== "SUPER_ADMIN"}
-                      className={`py-3 px-4 rounded-2xl border text-[10px] font-bold uppercase transition-all flex flex-col items-center gap-1.5 ${
-                        selectedBadgeToUnlock === b.id
-                          ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-900/20"
-                          : "bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700 disabled:opacity-30 disabled:cursor-not-allowed"
+                      key={c}
+                      type="button"
+                      onClick={() => setNewBadgeForm(p => ({ ...p, colorScheme: c }))}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold capitalize transition-all border ${
+                        newBadgeForm.colorScheme === c
+                          ? "bg-slate-800 border-white text-white shadow-md"
+                          : "bg-slate-950 border-slate-800 text-slate-400 hover:text-white"
                       }`}
                     >
-                      <span>{b.label}</span>
-                      <span className="text-[8px] opacity-60 font-mono tracking-widest">{b.role}</span>
+                      {c}
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Reason for assignment (Optional)</label>
-                <textarea 
-                  placeholder="e.g. Granted for exceptional community contributions..."
-                  value={badgeReason}
-                  onChange={(e) => setBadgeReason(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-4 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 min-h-[80px]"
+              <div className="space-y-1">
+                <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Deskripsi Badge</label>
+                <textarea
+                  placeholder="Jelaskan arti dan makna dari badge ini..."
+                  value={newBadgeForm.description}
+                  onChange={(e) => setNewBadgeForm(p => ({ ...p, description: e.target.value }))}
+                  rows={2}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:border-rose-500 outline-none font-sans resize-none"
+                  required
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Grant Date</label>
-                  <input 
-                    type="date"
-                    value={badgeDate}
-                    onChange={(e) => setBadgeDate(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs text-slate-400 focus:outline-none"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">Granted By</label>
-                  <div className="w-full bg-slate-800/50 border border-slate-800 rounded-xl px-4 py-2 text-xs text-slate-500 font-bold italic">
-                    @{user?.username}
-                  </div>
-                </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-mono text-slate-400 uppercase tracking-widest block font-bold">Deskripsi Persyaratan</label>
+                <textarea
+                  placeholder="Kriteria atau persyaratan yang harus dipenuhi pengguna untuk memperoleh badge ini..."
+                  value={newBadgeForm.requirement}
+                  onChange={(e) => setNewBadgeForm(p => ({ ...p, requirement: e.target.value }))}
+                  rows={2}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:border-rose-500 outline-none font-sans resize-none"
+                  required
+                />
               </div>
-            </div>
 
-            <div className="p-6 bg-slate-950/50 border-t border-slate-800 flex gap-3">
-              <button 
-                onClick={() => setUnlockBadgeModalOpen(false)}
-                className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-[10px] uppercase rounded-xl transition-all active:scale-95"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleUnlockBadge}
-                className="flex-[2] py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] uppercase rounded-xl transition-all active:scale-95 shadow-lg shadow-indigo-900/30 flex items-center justify-center gap-2"
-              >
-                <CheckCircle2 className="w-4 h-4" /> Finalize Assignment
-              </button>
-            </div>
+              <div className="pt-4 border-t border-slate-800 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setCreateBadgeModalOpen(false)}
+                  className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-space font-bold uppercase text-xs rounded-xl cursor-pointer"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-space font-bold uppercase text-xs rounded-xl shadow-lg shadow-rose-900/30 cursor-pointer flex items-center gap-2"
+                >
+                  <Plus className="w-4 h-4" /> Simpan & Daftarkan Badge
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

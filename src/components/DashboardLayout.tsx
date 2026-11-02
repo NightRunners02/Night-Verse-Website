@@ -27,6 +27,53 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  const searchContainerRef = React.useRef<HTMLDivElement>(null);
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
+
+  // Collapse when clicking outside if no active query
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setShowSearchDropdown(false);
+        if (!globalSearchQuery || globalSearchQuery.trim() === "") {
+          setIsSearchExpanded(false);
+        }
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [globalSearchQuery]);
+
+  const handleSearchClick = () => {
+    if (!isSearchExpanded) {
+      setIsSearchExpanded(true);
+      setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 50);
+    }
+  };
+
+  const handleInputBlur = (e: React.FocusEvent) => {
+    if (searchContainerRef.current?.contains(e.relatedTarget as Node)) {
+      return;
+    }
+    if (!globalSearchQuery || globalSearchQuery.trim() === "") {
+      setIsSearchExpanded(false);
+      setShowSearchDropdown(false);
+    }
+  };
+
+  const handleClearOrClose = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (globalSearchQuery) {
+      triggerSearch("");
+      setShowSearchDropdown(false);
+      searchInputRef.current?.focus();
+    } else {
+      setIsSearchExpanded(false);
+      setShowSearchDropdown(false);
+    }
+  };
 
   const [followedUserIds, setFollowedUserIds] = useState<Set<string>>(new Set());
 
@@ -165,19 +212,6 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
                 );
               })}
 
-              {/* Integrated Logout inside General Menu for better mobile/desktop flow */}
-              <button
-                onClick={() => setShowLogoutConfirm(true)}
-                className={`w-full flex items-center gap-3 py-3.5 px-4 mt-2 rounded-2xl transition-all font-bold font-space text-[12px] uppercase cursor-pointer border border-rose-500/10 bg-rose-500/5 text-rose-500 hover:bg-rose-500/10 active:scale-95 ${
-                  sidebarCollapsed && !mobileMenuOpen ? "justify-center" : ""
-                }`}
-                id="btn-sidebar-integrated-logout"
-                title={sidebarCollapsed ? "Logout System" : ""}
-              >
-                <LogOut className="w-4 h-4 flex-shrink-0" />
-                {(!sidebarCollapsed || mobileMenuOpen) && <span className="truncate">Logout System</span>}
-              </button>
-
               {/* RBAC protected admin routes view panels */}
               {isElevated && (
                 <div className="pt-6 space-y-1.5">
@@ -219,7 +253,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
         {/* top header navigation dashboard */}
         <header className="h-14 md:h-20 bg-slate-900/40 border-b border-slate-900 md:border md:rounded-3xl p-3 md:p-4 flex items-center justify-between gap-2.5 md:gap-4 sticky top-0 md:top-4 z-40 backdrop-blur-xl mb-0 md:mb-6">
 
-          <div className="flex items-center gap-2 flex-1 md:flex-initial">
+          <div className="flex items-center gap-2 flex-1 min-w-0 mr-3 md:mr-6">
             {/* Mobile Menu Icon */}
             <button
               onClick={() => setMobileMenuOpen(true)}
@@ -228,18 +262,36 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
               <Menu className="w-4 h-4" />
             </button>
 
-            {/* Global Search Input - Collapsible */}
-            <div className={`relative transition-all duration-300 ${isSearchExpanded ? "w-full max-w-[220px] sm:max-w-md md:max-w-lg lg:max-w-xl" : "w-9 md:w-12 h-9 md:h-12"}`}>
-              <div className="relative w-full h-full">
-                <button 
-                  onClick={() => setIsSearchExpanded(!isSearchExpanded)}
-                  className={`absolute left-0 top-0 bottom-0 z-20 flex items-center justify-center transition-all ${isSearchExpanded ? "w-9 text-purple-400" : "w-full h-full bg-slate-950 rounded-lg md:rounded-2xl border border-slate-850 text-slate-400 hover:text-white"}`}
-                  title="Toggle search"
+            {/* Global Search Input - Expandable to the right */}
+            <div
+              ref={searchContainerRef}
+              className={`relative transition-[width] duration-300 ease-in-out ${
+                isSearchExpanded ? "w-full" : "w-9 md:w-12"
+              } h-9 md:h-12 flex-shrink-0`}
+            >
+              <div
+                onClick={handleSearchClick}
+                className={`w-full h-full rounded-lg md:rounded-2xl transition-all duration-300 relative flex items-center bg-slate-950 border ${
+                  isSearchExpanded
+                    ? "border-purple-500/50 shadow-lg shadow-purple-950/20 ring-1 ring-purple-500/20"
+                    : "border-slate-800 hover:border-purple-500/40 hover:bg-slate-900 cursor-pointer justify-center"
+                }`}
+              >
+                {/* Search Icon */}
+                <div
+                  className={`absolute top-0 bottom-0 flex items-center justify-center transition-all duration-300 pointer-events-none ${
+                    isSearchExpanded
+                      ? "left-0 w-9 md:w-12 text-purple-400"
+                      : "inset-0 w-full h-full text-slate-400 group-hover:text-white"
+                  }`}
+                  title="Search creators, works, tags"
                 >
-                  <Search className="w-3.5 h-3.5 md:w-5 h-5" />
-                </button>
-                
+                  <Search className="w-4 h-4 md:w-5 md:h-5 shrink-0" />
+                </div>
+
+                {/* Actual Input */}
                 <input
+                  ref={searchInputRef}
                   type="text"
                   placeholder="Search creators, works, tags..."
                   value={globalSearchQuery}
@@ -247,16 +299,43 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
                     triggerSearch(e.target.value);
                     setShowSearchDropdown(true);
                   }}
-                  onFocus={() => setShowSearchDropdown(true)}
-                  className={`w-full h-full text-[10px] md:text-xs py-1.5 md:py-2.5 pl-9 pr-3 bg-slate-950 rounded-lg md:rounded-2xl border border-slate-850 focus:outline-none focus:border-purple-600 text-slate-100 placeholder-slate-500 font-mono transition-all duration-300 ${isSearchExpanded ? "opacity-100 scale-100 z-10" : "opacity-0 scale-95 pointer-events-none z-0"}`}
+                  onFocus={() => {
+                    setIsSearchExpanded(true);
+                    setShowSearchDropdown(true);
+                  }}
+                  onBlur={handleInputBlur}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") {
+                      setShowSearchDropdown(false);
+                      if (!globalSearchQuery || globalSearchQuery.trim() === "") {
+                        setIsSearchExpanded(false);
+                        searchInputRef.current?.blur();
+                      }
+                    }
+                  }}
+                  className={`w-full h-full min-w-0 text-[11px] md:text-xs py-1.5 md:py-2.5 pl-9 md:pl-12 pr-8 md:pr-10 bg-transparent focus:outline-none text-slate-100 placeholder-slate-400 font-mono transition-opacity duration-200 ${
+                    isSearchExpanded ? "opacity-100 z-10" : "opacity-0 pointer-events-none"
+                  }`}
                   id="global-search-input"
                 />
+
+                {/* Clear / Close Action Button when Expanded */}
+                {isSearchExpanded && (
+                  <button
+                    type="button"
+                    onClick={handleClearOrClose}
+                    className="absolute right-2 md:right-3 p-1 rounded-md text-slate-400 hover:text-white hover:bg-slate-800/80 transition-all z-20 cursor-pointer"
+                    title={globalSearchQuery ? "Clear search" : "Close search"}
+                  >
+                    <X className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                  </button>
+                )}
               </div>
 
               {/* Instant Search Dropdown results overlay */}
               {showSearchDropdown && globalSearchQuery && (
                 <div
-                  className="fixed md:absolute top-19 md:top-13 left-3 md:left-0 right-3 md:right-auto md:w-full max-h-[60vh] md:max-h-[300px] overflow-y-auto bg-slate-900 rounded-xl md:rounded-2xl p-4 md:p-4 border border-slate-800 shadow-2xl z-50 text-xs custom-scrollbar"
+                  className="fixed md:absolute top-19 md:top-14 left-3 md:left-0 right-3 md:right-0 max-h-[60vh] md:max-h-[350px] overflow-y-auto bg-slate-900 rounded-xl md:rounded-2xl p-4 md:p-4 border border-slate-800 shadow-2xl z-50 text-xs custom-scrollbar"
                   id="search-dropdown-popup"
                 >
                   <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-3 select-none">
@@ -393,7 +472,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
           </div>
 
           {/* Right Header Navigation Items */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 shrink-0 ml-auto">
 
             {/* Mobile Profile shortcut (Replacing theme toggle for mobile UX) */}
             <div

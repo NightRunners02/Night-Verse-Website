@@ -24,9 +24,9 @@ export const RoleBadge: React.FC<RoleBadgeProps> = ({
   // Normalize role/badge name
   const b = role?.toString();
 
-  if (b === "SUPER_ADMIN" || b === "STAFF") {
+  if (b === "SUPER_ADMIN" || b === "Super Admin" || b === "STAFF") {
     badgeStyles = "bg-rose-500/10 border-rose-500/30 text-rose-400 shadow-[0_0_8px_rgba(244,63,94,0.1)]";
-    text = "Admin";
+    text = b === "SUPER_ADMIN" ? "Super Admin" : b;
     Icon = ShieldAlert;
   } else if (b === "ADMIN" || b === "Administrator") {
     badgeStyles = "bg-purple-500/10 border-purple-500/30 text-purple-400 shadow-[0_0_8px_rgba(168,85,247,0.1)]";
@@ -36,7 +36,7 @@ export const RoleBadge: React.FC<RoleBadgeProps> = ({
     badgeStyles = "bg-cyan-500/10 border-cyan-500/30 text-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.1)]";
     text = "Moderator";
     Icon = Shield;
-  } else if (b === "VERIFIED" || b === "Verified Creator") {
+  } else if (b === "VERIFIED" || b === "Verified Creator" || b === "Verified") {
     badgeStyles = "bg-blue-500/10 border-blue-500/30 text-blue-400";
     text = "Verified";
     Icon = CheckCircle2;
@@ -44,12 +44,16 @@ export const RoleBadge: React.FC<RoleBadgeProps> = ({
     badgeStyles = "bg-emerald-500/10 border-emerald-500/30 text-emerald-400";
     text = "Contributor";
     Icon = Trophy;
-  } else if (b === "VIP") {
+  } else if (b === "VIP" || b === "VIP Member") {
     badgeStyles = "bg-amber-500/10 border-amber-500/30 text-amber-400 shadow-[0_0_8px_rgba(245,158,11,0.1)]";
     text = "VIP";
     Icon = Crown;
+  } else if (b === "Night Artist") {
+    badgeStyles = "bg-fuchsia-500/10 border-fuchsia-500/30 text-fuchsia-400 shadow-[0_0_8px_rgba(217,70,239,0.1)]";
+    text = "Night Artist";
+    Icon = Star;
   } else {
-    badgeStyles = "bg-slate-950/50 border-slate-800 text-slate-500";
+    badgeStyles = "bg-slate-950/50 border-slate-800 text-slate-400";
     text = b === "USER" || b === "User" ? "User" : (b || "User");
     Icon = User;
   }

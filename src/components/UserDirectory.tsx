@@ -9,6 +9,7 @@ import { db } from "../lib/db.js";
 import { motion, AnimatePresence } from "motion/react";
 import { User as UserType } from "../types.js";
 import { RoleBadge } from "./RoleBadge.js";
+import { FullProfileView } from "./FullProfileView.js";
 
 type DirectoryViewMode = "directory" | "leaderboard";
 type LeaderboardPeriod = "all_time" | "this_month" | "this_week";
@@ -25,7 +26,8 @@ interface CreatorMetrics {
 }
 
 export const UserDirectory: React.FC = () => {
-  const { user, viewProfile, followActionCount, toggleFollow } = useAppState();
+  const { user, followActionCount, toggleFollow } = useAppState();
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<DirectoryViewMode>("directory");
   const [searchQuery, setSearchQuery] = useState("");
   const [users, setUsers] = useState<UserType[]>([]);
@@ -182,6 +184,24 @@ export const UserDirectory: React.FC = () => {
     setCurrentPage(Math.max(1, Math.min(page, totalPages)));
   };
 
+  const handleOpenProfile = (id: string) => {
+    setSelectedUserId(id);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  if (selectedUserId) {
+    return (
+      <FullProfileView
+        userId={selectedUserId}
+        onBack={() => {
+          setSelectedUserId(null);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }}
+        backLabel="Back to Creator Directory"
+      />
+    );
+  }
+
   // Top 3 Podium Creators
   const top1 = leaderboardCreators[0];
   const top2 = leaderboardCreators[1];
@@ -273,7 +293,7 @@ export const UserDirectory: React.FC = () => {
                     targetUser={u} 
                     isFollowed={followedIds.has(u.id)} 
                     toggleFollow={toggleFollow}
-                    viewProfile={viewProfile}
+                    viewProfile={handleOpenProfile}
                   />
                 ))}
               </div>
@@ -300,7 +320,7 @@ export const UserDirectory: React.FC = () => {
                     targetUser={u} 
                     isFollowed={followedIds.has(u.id)} 
                     toggleFollow={toggleFollow}
-                    viewProfile={viewProfile}
+                    viewProfile={handleOpenProfile}
                   />
                 ))}
               </div>
@@ -327,7 +347,7 @@ export const UserDirectory: React.FC = () => {
                     targetUser={u} 
                     isFollowed={followedIds.has(u.id)} 
                     toggleFollow={toggleFollow}
-                    viewProfile={viewProfile}
+                    viewProfile={handleOpenProfile}
                   />
                 ))}
               </div>
@@ -355,7 +375,7 @@ export const UserDirectory: React.FC = () => {
                     targetUser={u} 
                     isFollowed={followedIds.has(u.id)} 
                     toggleFollow={toggleFollow}
-                    viewProfile={viewProfile}
+                    viewProfile={handleOpenProfile}
                   />
                 ))
               ) : (
@@ -620,7 +640,7 @@ export const UserDirectory: React.FC = () => {
                       metrics={top2}
                       isFollowed={followedIds.has(top2.user.id)}
                       toggleFollow={toggleFollow}
-                      viewProfile={viewProfile}
+                      viewProfile={handleOpenProfile}
                       sortMetric={sortMetric}
                     />
                   ) : (
@@ -638,7 +658,7 @@ export const UserDirectory: React.FC = () => {
                       metrics={top1}
                       isFollowed={followedIds.has(top1.user.id)}
                       toggleFollow={toggleFollow}
-                      viewProfile={viewProfile}
+                      viewProfile={handleOpenProfile}
                       sortMetric={sortMetric}
                     />
                   ) : null}
@@ -652,7 +672,7 @@ export const UserDirectory: React.FC = () => {
                       metrics={top3}
                       isFollowed={followedIds.has(top3.user.id)}
                       toggleFollow={toggleFollow}
-                      viewProfile={viewProfile}
+                      viewProfile={handleOpenProfile}
                       sortMetric={sortMetric}
                     />
                   ) : (
@@ -689,7 +709,7 @@ export const UserDirectory: React.FC = () => {
                     metrics={m}
                     isFollowed={followedIds.has(m.user.id)}
                     toggleFollow={toggleFollow}
-                    viewProfile={viewProfile}
+                    viewProfile={handleOpenProfile}
                     sortMetric={sortMetric}
                   />
                 ))}
@@ -823,20 +843,34 @@ const PodiumCard: React.FC<{
         </div>
       </div>
 
-      {/* Follow Button */}
-      <button 
-        onClick={handleFollow}
-        className={`w-full py-2 rounded-xl text-[10px] font-black font-space uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-          isFollowed 
-            ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500/20' 
-            : isGold
-            ? 'bg-amber-400 text-slate-950 hover:bg-amber-300 font-bold'
-            : 'bg-white text-slate-950 hover:bg-slate-200'
-        }`}
-      >
-        <UserPlus className="w-3.5 h-3.5" />
-        <span>{isFollowed ? 'Unfollow' : 'Follow'}</span>
-      </button>
+      {/* Follow & View Profile Buttons */}
+      <div className="w-full flex gap-2">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            viewProfile(user.id);
+          }}
+          className="flex-1 py-2 rounded-xl text-[10px] font-black font-space uppercase bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 hover:text-white transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shadow-sm"
+        >
+          <Eye className="w-3.5 h-3.5 text-purple-400" />
+          <span>Profile</span>
+        </button>
+        <button 
+          type="button"
+          onClick={handleFollow}
+          className={`flex-1 py-2 rounded-xl text-[10px] font-black font-space uppercase transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-95 shadow-sm ${
+            isFollowed 
+              ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500/20' 
+              : isGold
+              ? 'bg-amber-400 text-slate-950 hover:bg-amber-300 font-bold'
+              : 'bg-white text-slate-950 hover:bg-slate-200'
+          }`}
+        >
+          <UserPlus className="w-3.5 h-3.5" />
+          <span>{isFollowed ? 'Unfollow' : 'Follow'}</span>
+        </button>
+      </div>
     </motion.div>
   );
 };
@@ -911,18 +945,33 @@ const RankedListRow: React.FC<{
           </span>
         </div>
 
-        {/* Follow Button */}
-        <button 
-          onClick={handleFollow}
-          className={`px-3 py-1.5 rounded-xl text-[10px] font-black font-space uppercase transition-all flex items-center gap-1 shrink-0 cursor-pointer ${
-            isFollowed 
-              ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500/20' 
-              : 'bg-white text-slate-950 hover:bg-slate-200'
-          }`}
-        >
-          <UserPlus className="w-3 h-3" />
-          <span>{isFollowed ? 'Unfollow' : 'Follow'}</span>
-        </button>
+        {/* Actions */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              viewProfile(user.id);
+            }}
+            className="px-3 py-1.5 rounded-xl text-[10px] font-black font-space uppercase bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 hover:text-white transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 shadow-sm"
+          >
+            <Eye className="w-3 h-3 text-purple-400" />
+            <span className="hidden sm:inline">View Profile</span>
+            <span className="sm:hidden">Profile</span>
+          </button>
+          <button 
+            type="button"
+            onClick={handleFollow}
+            className={`px-3 py-1.5 rounded-xl text-[10px] font-black font-space uppercase transition-all flex items-center gap-1 shrink-0 cursor-pointer active:scale-95 shadow-sm ${
+              isFollowed 
+                ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500/20' 
+                : 'bg-white text-slate-950 hover:bg-slate-200'
+            }`}
+          >
+            <UserPlus className="w-3 h-3" />
+            <span>{isFollowed ? 'Unfollow' : 'Follow'}</span>
+          </button>
+        </div>
       </div>
     </motion.div>
   );
@@ -992,17 +1041,31 @@ const DirectoryUserCard: React.FC<{
         </div>
       </div>
 
-      <button 
-        onClick={handleFollow}
-        className={`w-full py-2 sm:py-2.5 rounded-xl text-[8px] sm:text-[10px] font-black font-space uppercase transition-all flex items-center justify-center gap-1.5 sm:gap-2 cursor-pointer ${
-          isFollowed 
-            ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500/20' 
-            : 'bg-white text-slate-950 hover:bg-slate-200'
-        }`}
-      >
-        <UserPlus className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
-        <span className="truncate">{isFollowed ? 'Unfollow' : 'Follow'}</span>
-      </button>
+      <div className="flex gap-1.5 sm:gap-2 w-full pt-1">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            viewProfile(targetUser.id);
+          }}
+          className="flex-1 py-2 sm:py-2.5 rounded-xl text-[8px] sm:text-[10px] font-black font-space uppercase bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 hover:text-white transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 shadow-sm"
+        >
+          <Eye className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-purple-400" />
+          <span className="truncate">View Profile</span>
+        </button>
+        <button 
+          type="button"
+          onClick={handleFollow}
+          className={`flex-1 py-2 sm:py-2.5 rounded-xl text-[8px] sm:text-[10px] font-black font-space uppercase transition-all flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer active:scale-95 shadow-sm ${
+            isFollowed 
+              ? 'bg-rose-500/10 text-rose-500 border border-rose-500/20 hover:bg-rose-500/20' 
+              : 'bg-white text-slate-950 hover:bg-slate-200'
+          }`}
+        >
+          <UserPlus className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
+          <span className="truncate">{isFollowed ? 'Unfollow' : 'Follow'}</span>
+        </button>
+      </div>
     </motion.div>
   );
 };

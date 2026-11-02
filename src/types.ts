@@ -3,6 +3,38 @@ export type ContentStatus = "PENDING" | "APPROVED" | "REJECTED" | "REVISION" | "
 export type SourceType = "LAPTOP" | "MOBILE" | "URL" | "EMBED";
 export type PrivacyLevel = "PUBLIC" | "PRIVATE" | "ONLY_ME";
 
+export type BadgeCategory = "ROLE" | "COMMUNITY" | "ACHIEVEMENT" | "SPECIAL";
+
+export interface BadgeDefinition {
+  id: string;
+  name: string;
+  icon: string; // Lucide icon name or identifier
+  description: string;
+  category: BadgeCategory;
+  tier: number; // 5: Super Admin, 4: Admin, 3: Moderator, 2: Verified, 1: Contributor, 0: VIP/Member
+  status: "ACTIVE" | "INACTIVE";
+  requirement: string;
+  createdAt: string;
+  color?: string;
+  bgColor?: string;
+  borderColor?: string;
+}
+
+export interface UserBadgeAward {
+  id: string;
+  userId: string;
+  username: string;
+  badgeId: string;
+  badgeName: string;
+  badgeTier: number;
+  grantedById: string;
+  grantedByUsername: string;
+  grantedByRole: Role;
+  grantedAt: string;
+  reason?: string;
+  status: "SUCCESS";
+}
+
 export interface User {
   id: string;
   email: string;
@@ -23,6 +55,8 @@ export interface User {
     linkedin?: string;
     tiktok?: string;
     facebook?: string;
+    youtube?: string;
+    discord?: string;
     bannerUrl?: string;
     gender?: string;
     dateOfBirth?: string;
@@ -38,9 +72,13 @@ export interface User {
       showPhone: PrivacyLevel;
       showFullName: PrivacyLevel;
       showAvatar: PrivacyLevel;
+      showBanner?: PrivacyLevel;
       showLocation: PrivacyLevel;
       showSocialLinks: PrivacyLevel;
+      showInterests?: PrivacyLevel;
+      showIdentity?: PrivacyLevel;
       showActivity: PrivacyLevel;
+      showActivityStatus?: PrivacyLevel;
       twoFactorEnabled: boolean;
     };
     notificationPreferences?: {
@@ -157,15 +195,23 @@ export interface Video {
   category?: string;
 }
 
+export type TagType = "Copyright" | "General" | "Artist" | "Character" | "Metadata";
+export type TagStatus = "APPROVED" | "PENDING" | "REJECTED";
+
 export interface Tag {
-  id: string;
+  id: string; // tag_id primary key
   name: string;
+  type: TagType;
+  isAmbiguous?: boolean;
+  status?: TagStatus;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt?: string;
   usageCount: number;
-  count?: number; // Alias for compatibility with some components
+  count?: number; // Alias for compatibility
   growthRate: number;
   mostActiveUsername?: string;
   lastUsedAt: string;
-  createdAt: string;
   blogCount: number;
   photoCount: number;
   videoCount: number;

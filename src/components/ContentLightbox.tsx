@@ -7,7 +7,7 @@ import { getAspectRatioClass } from "./ContentCreator.js";
 import { RoleBadge, BadgeType } from "./RoleBadge.js";
 
 export const ContentLightbox: React.FC = () => {
-  const { focusedContent, setFocusedContent, token, user, triggerToast, createNotification, viewProfile, followActionCount, toggleFollow, triggerDBSync } = useAppState();
+  const { focusedContent, setFocusedContent, token, user, triggerToast, createNotification, viewProfile, followActionCount, toggleFollow, triggerDBSync, triggerSearch, navigateTo } = useAppState();
   const [comments, setComments] = useState<any[]>([]);
   const [commentText, setCommentText] = useState("");
   const [hasLiked, setHasLiked] = useState(false);
@@ -1098,6 +1098,67 @@ export const ContentLightbox: React.FC = () => {
     );
   };
 
+  const renderContentLightboxGroupedTags = (tagsArray: string[]) => {
+    if (!tagsArray || tagsArray.length === 0) return null;
+    const allDbTags = db.tags.getAll();
+
+    const uniqueTagsMap = new Map<string, { name: string; type: string; isAmbiguous: boolean }>();
+    tagsArray.forEach(rawTag => {
+      if (!rawTag || typeof rawTag !== 'string') return;
+      const clean = rawTag.toLowerCase().trim().replace(/^#/, "");
+      if (!clean || uniqueTagsMap.has(clean)) return;
+
+      const dbMatch = allDbTags.find(t => t.name.toLowerCase() === clean);
+      uniqueTagsMap.set(clean, {
+        name: clean,
+        type: dbMatch?.type || "General",
+        isAmbiguous: !!dbMatch?.isAmbiguous
+      });
+    });
+
+    const uniqueTags = Array.from(uniqueTagsMap.values());
+
+    const groups = [
+      { label: "Artists", textStyle: "text-rose-400", badgeStyle: "text-rose-300 bg-rose-500/10 border-rose-500/30 hover:border-rose-400", items: uniqueTags.filter(t => t.type === "Artist") },
+      { label: "Copyright", textStyle: "text-purple-400", badgeStyle: "text-purple-300 bg-purple-500/10 border-purple-500/30 hover:border-purple-400", items: uniqueTags.filter(t => t.type === "Copyright") },
+      { label: "Characters", textStyle: "text-cyan-400", badgeStyle: "text-cyan-300 bg-cyan-500/10 border-cyan-500/30 hover:border-cyan-400", items: uniqueTags.filter(t => t.type === "Character") },
+      { label: "Regular", textStyle: "text-slate-300", badgeStyle: "text-slate-300 bg-slate-800/80 border-slate-700/80 hover:border-slate-500", items: uniqueTags.filter(t => t.type === "General") },
+      { label: "Metadata", textStyle: "text-emerald-400", badgeStyle: "text-emerald-300 bg-emerald-500/10 border-emerald-500/30 hover:border-emerald-400", items: uniqueTags.filter(t => t.type === "Metadata") }
+    ].filter(g => g.items.length > 0);
+
+    if (groups.length === 0) return null;
+
+    return (
+      <div className="space-y-3 pt-3 border-t border-slate-800/60 mt-3">
+        {groups.map(g => (
+          <div key={g.label} className="space-y-1.5">
+            <span className={`text-[10px] font-extrabold font-space uppercase tracking-wider block ${g.textStyle}`}>
+              {g.label}
+            </span>
+            <div className="flex flex-wrap gap-1.5">
+              {g.items.map(tagObj => (
+                <span 
+                  key={tagObj.name}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFocusedContent(null);
+                    triggerSearch(tagObj.name);
+                    navigateTo("dashboard", "explore");
+                  }}
+                  className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg border text-[10px] font-mono font-semibold cursor-pointer transition-all active:scale-95 ${g.badgeStyle}`}
+                  title={`Cari #${tagObj.name}`}
+                >
+                  <span>#{tagObj.name}</span>
+                  {tagObj.isAmbiguous && <span className="text-amber-400 font-bold" title="Ambiguous Tag">(?)</span>}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const renderMediaElement = () => {
     if (isDocPhoto) {
       return (
@@ -1578,94 +1639,6 @@ export const ContentLightbox: React.FC = () => {
             <ChevronRight className="w-6 h-6" />
           </button>
         </div>
-
-        {/* Action Sidebar Overlay (Floating right-aligned) - Only visible on desktop/tablet when not in landscape split view */}
-        {!isMobile && ratioMode !== "landscape" && (
-          <div className="absolute right-4 bottom-20 md:bottom-24 flex flex-col items-center gap-5 z-30">
-            {/* Creator Profile / Follow link */}
-            <div className="relative group">
-              <img 
-                src={db.users.getById(item.userId)?.profile?.avatarUrl || item.authorAvatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${item.authorName}`} 
-                alt={item.authorName} 
-                className="w-11 h-11 rounded-full border-2 border-purple-500 object-cover shadow-lg cursor-pointer transform hover:scale-105 transition-transform"
-                onClick={() => {
-                  setFocusedContent(null);
-                  viewProfile(item.userId);
-                }}
-              />
-              {user?.id !== item.userId && (
-                <button 
-                  onClick={handleFollow}
-                  className={`absolute -bottom-1 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full flex items-center justify-center border border-slate-900 shadow transition-all ${
-                    isFollowing ? "bg-emerald-500 text-white" : "bg-purple-600 hover:bg-purple-500 text-white"
-                  }`}
-                >
-                  {isFollowing ? <Check className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
-                </button>
-              )}
-            </div>
-
-            {/* Likes */}
-            <div className="flex flex-col items-center">
-              <button 
-                onClick={handleLike}
-                className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md border transition-all cursor-pointer shadow-lg ${
-                  hasLiked 
-                    ? "bg-rose-500/90 border-rose-400 text-white" 
-                    : "bg-black/40 border-white/10 text-white hover:bg-black/60 hover:scale-105"
-                }`}
-              >
-                <Heart className={`w-5 h-5 ${hasLiked ? "fill-current" : ""}`} />
-              </button>
-              <span className="text-[10px] font-bold font-mono text-white/90 drop-shadow mt-1">
-                {likesCount}
-              </span>
-            </div>
-
-            {/* Comments Trigger */}
-            <div className="flex flex-col items-center">
-              <button 
-                onClick={() => {
-                  setIsCommentsOpen(!isCommentsOpen);
-                  setIsReporting(false);
-                }}
-                className={`w-11 h-11 rounded-full flex items-center justify-center backdrop-blur-md border transition-all cursor-pointer shadow-lg ${
-                  isCommentsOpen 
-                    ? "bg-purple-600/95 border-purple-500 text-white" 
-                    : "bg-black/40 border-white/10 text-white hover:bg-black/60 hover:scale-105"
-                }`}
-              >
-                <MessageSquare className="w-5 h-5" />
-              </button>
-              <span className="text-[10px] font-bold font-mono text-white/90 drop-shadow mt-1">
-                {comments.length}
-              </span>
-            </div>
-
-            {/* Views Ticker */}
-            <div className="flex flex-col items-center">
-              <div className="w-11 h-11 rounded-full bg-black/40 border border-white/10 flex items-center justify-center text-white backdrop-blur-md shadow-lg">
-                <Eye className="w-5 h-5 text-purple-400" />
-              </div>
-              <span className="text-[10px] font-bold font-mono text-white/90 drop-shadow mt-1">
-                {item.views || 4}
-              </span>
-            </div>
-
-            {/* Report Ticker */}
-            <button 
-              onClick={() => {
-                setIsReporting(true);
-                setIsCommentsOpen(true);
-                setActiveTab('list');
-              }}
-              className="w-11 h-11 rounded-full bg-black/40 border border-white/10 flex items-center justify-center text-slate-400 hover:text-rose-400 backdrop-blur-md shadow-lg transition-colors cursor-pointer"
-              title="Report content"
-            >
-              <AlertTriangle className="w-4 h-4" />
-            </button>
-          </div>
-        )}
       </>
     );
   };
@@ -1793,17 +1766,8 @@ export const ContentLightbox: React.FC = () => {
                     </button>
                   </div>
 
-                  {/* Tags */}
-                  <div className="flex flex-wrap gap-1.5 pt-2">
-                    {(item.tags || []).map((tag: string, idx: number) => (
-                      <span 
-                        key={`${tag}-${idx}`} 
-                        className="text-[9px] font-bold text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded border border-purple-500/20"
-                      >
-                        #{tag.toLowerCase()}
-                      </span>
-                    ))}
-                  </div>
+                  {/* Grouped Tags System */}
+                  {renderContentLightboxGroupedTags(item.tags || [])}
                 </motion.div>
               )}
 
@@ -2263,13 +2227,8 @@ export const ContentLightbox: React.FC = () => {
                         </span>
                       </div>
 
-                      <div className="flex flex-wrap gap-1.5">
-                        {(item.tags || []).map((tag: string, idx: number) => (
-                          <span key={idx} className="text-[8px] font-bold text-slate-500 bg-slate-800/50 px-2 py-0.5 rounded-md border border-slate-700/50">
-                            #{tag.toLowerCase()}
-                          </span>
-                        ))}
-                      </div>
+                      {/* Grouped Tags System */}
+                      {renderContentLightboxGroupedTags(item.tags || [])}
                     </div>
 
                     {/* Action Buttons Card */}
