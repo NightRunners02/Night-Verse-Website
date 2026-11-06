@@ -2,7 +2,8 @@ import {
   User, Blog, Photo, Video, Tag, TagType, TagStatus, Notification, Comment, SystemSettings, Role, ContentStatus,
   BadgeDefinition, UserBadgeAward,
   DocumentationArticle, DocumentationCategory, DocumentationRevision, ChangelogRelease,
-  SupportTicket, TicketMessage, TicketStatus
+  SupportTicket, TicketMessage, TicketStatus,
+  VideoRendition, VideoProcessingStatus
 } from "../types.js";
 import { hashPassword } from "./crypto.js";
 import { DEFAULT_DOC_CATEGORIES, DEFAULT_DOC_ARTICLES, DEFAULT_CHANGELOGS } from "./defaultDocs.js";
@@ -764,8 +765,36 @@ export const db = {
         }
       }
 
+      // Initialize processing status if native
+      if (video.sourceType === "LAPTOP" || video.sourceType === "MOBILE" || video.sourceType === "UPLOAD") {
+        video.processingStatus = "PROCESSING";
+      } else {
+        video.processingStatus = "COMPLETED";
+      }
+
       const data = get<Video[]>(KEYS.VIDEOS, []);
       set(KEYS.VIDEOS, [video, ...data]);
+      
+      // Simulate Transcoding for Native Files
+      if (video.processingStatus === "PROCESSING") {
+        setTimeout(() => {
+          const videos = get<Video[]>(KEYS.VIDEOS, []);
+          const idx = videos.findIndex(v => v.id === video.id);
+          if (idx !== -1) {
+            const v = videos[idx];
+            // Generate Mock Renditions
+            const renditions: VideoRendition[] = [
+              { id: "r1", resolution: "1080p", width: 1920, height: 1080, codec: "h264", bitrate: 5000, frameRate: 60, url: v.url, fileSize: v.fileSize || 0 },
+              { id: "r2", resolution: "720p", width: 1280, height: 720, codec: "h264", bitrate: 2500, frameRate: 30, url: v.url, fileSize: Math.round((v.fileSize || 0) * 0.5) },
+              { id: "r3", resolution: "480p", width: 854, height: 480, codec: "h264", bitrate: 1000, frameRate: 24, url: v.url, fileSize: Math.round((v.fileSize || 0) * 0.2) }
+            ];
+            videos[idx] = { ...v, renditions, processingStatus: "COMPLETED", codec: "h264 (H.264 / AVC)" };
+            set(KEYS.VIDEOS, videos);
+            window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.VIDEOS, data: videos } }));
+          }
+        }, 3000);
+      }
+
       if (video.status === "APPROVED") {
         db.tags.updateStats(video.tags, [], video.authorName);
         db.notifications.addStatusUpdate(video.userId, "APPROVED", video.title, "video", video.id);
@@ -818,7 +847,8 @@ export const db = {
   tags: {
     getAll: (): Tag[] => {
       const list = get<Tag[]>(KEYS.TAGS, []);
-      return Array.isArray(list) ? list.map(t => ({ ...t })) : [];
+      const tags = Array.isArray(list) ? list.map(t => ({ ...t })) : [];
+      return tags.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
     },
     add: (tagData: { name: string; type?: TagType; isAmbiguous?: boolean; status?: TagStatus; createdBy?: string }): Tag | null => {
       const rawTags = get<Tag[]>(KEYS.TAGS, []);

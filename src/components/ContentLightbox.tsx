@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { X, Heart, MessageSquare, CornerDownRight, Check, UserPlus, Eye, Clock, Monitor, AlertTriangle, RefreshCw, Globe, Plus, Star, Bookmark, Share2, Link, Download, MoreHorizontal, ChevronLeft, ChevronRight, Maximize2, Minimize2, Info, Users, Play, Pause, Volume2, VolumeX, Settings, SquareStack, SkipForward, SkipBack, Flag, Layers, Lock, Unlock, MessageSquareOff, RotateCcw, RotateCw } from "lucide-react";
+import { X, Heart, MessageSquare, CornerDownRight, Check, UserPlus, Eye, Clock, Monitor, AlertTriangle, RefreshCw, Globe, Plus, Star, Bookmark, Share2, Link, Download, MoreHorizontal, ChevronLeft, ChevronRight, Maximize2, Minimize2, Info, Users, Play, Pause, Volume2, VolumeX, Settings, SquareStack, SkipForward, SkipBack, Flag, Layers, Lock, Unlock, MessageSquareOff, RotateCcw, RotateCw, Zap } from "lucide-react";
 import { useAppState } from "../context/AppState.js";
 import { motion, AnimatePresence } from "motion/react";
 import { db } from "../lib/db.js";
@@ -70,6 +70,8 @@ export const ContentLightbox: React.FC = () => {
   const [settingsSubmenu, setSettingsSubmenu] = useState<"main" | "speed" | "quality">("main");
   const [selectedQuality, setSelectedQuality] = useState<string>("Auto");
   const [sourceVideoHeight, setSourceVideoHeight] = useState<number>(1080);
+  const [currentVideoUrl, setCurrentVideoUrl] = useState<string>("");
+  const [isSwitchingQuality, setIsSwitchingQuality] = useState(false);
 
   // Detect mobile viewport
   useEffect(() => {
@@ -224,6 +226,9 @@ export const ContentLightbox: React.FC = () => {
     setSettingsSubmenu("main");
     setProgress(0);
     setCurrentTime(0);
+    setCurrentVideoUrl(item.url || "");
+    setSelectedQuality("Auto");
+    setIsSwitchingQuality(false);
 
     // Update views in Registry and fetch updated object
     let freshItem = item;
@@ -987,10 +992,34 @@ export const ContentLightbox: React.FC = () => {
   );
 
   const handleSelectQuality = (label: string) => {
-    setSelectedQuality(label);
-    setShowSettingsMenu(false);
-    setSettingsSubmenu("main");
-    triggerToast("Kualitas Video ⚙️", `Pengaturan kualitas disetel ke ${label}`, "info");
+    if (label === selectedQuality) return;
+    
+    setIsSwitchingQuality(true);
+    const prevTime = videoRef.current?.currentTime || 0;
+    const wasPlaying = isPlaying;
+
+    setTimeout(() => {
+      setSelectedQuality(label);
+      
+      let targetUrl = item.url;
+      if (label !== "Auto" && label !== "Original") {
+        const rend = item.renditions?.find(r => r.resolution === label);
+        if (rend) targetUrl = rend.url;
+      }
+
+      setCurrentVideoUrl(targetUrl);
+      
+      // Attempt to resume from same timestamp
+      if (videoRef.current) {
+        videoRef.current.currentTime = prevTime;
+        if (wasPlaying) videoRef.current.play();
+      }
+
+      setIsSwitchingQuality(false);
+      setShowSettingsMenu(false);
+      setSettingsSubmenu("main");
+      triggerToast("Kualitas Video ⚙️", `Pengaturan kualitas disetel ke ${label}`, "info");
+    }, 800); // Simulate buffering on switch
   };
 
   const toggleFullscreen = async () => {
@@ -1297,9 +1326,17 @@ export const ContentLightbox: React.FC = () => {
             onClick={handleMediaTouch}
             onMouseMove={resetControlsTimer}
           >
+            {isSwitchingQuality && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-sm transition-all animate-in fade-in">
+                <div className="flex flex-col items-center gap-3">
+                  <RefreshCw className="w-10 h-10 text-purple-400 animate-spin" />
+                  <span className="text-[10px] font-black text-white uppercase tracking-[0.2em]">Switching Rendition...</span>
+                </div>
+              </div>
+            )}
             <video 
               ref={videoRef}
-              src={currentUrl || undefined} 
+              src={currentVideoUrl || currentUrl || undefined} 
               autoPlay={false} 
               loop={!isMobile}
               onTimeUpdate={handleTimeUpdate}
@@ -1307,6 +1344,7 @@ export const ContentLightbox: React.FC = () => {
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
               onClick={togglePlay}
+              onEnded={() => setIsPlaying(false)}
               className="w-full h-full object-contain cursor-pointer"
               playsInline
             />
@@ -1986,6 +2024,36 @@ export const ContentLightbox: React.FC = () => {
                     <p className="text-xs text-slate-300 leading-relaxed font-sans bg-slate-950/40 p-3.5 rounded-xl border border-slate-800/60">
                       {item.description}
                     </p>
+                  )}
+
+                  {/* Video Technical Dossier (New) */}
+                  {isDocVideo && (
+                    <div className="p-4 bg-slate-950/60 border border-slate-800/80 rounded-2xl space-y-3 shadow-inner">
+                      <div className="flex items-center justify-between border-b border-slate-800/60 pb-2">
+                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Signal Telemetry</span>
+                        <span className="flex items-center gap-1 text-[8px] font-black text-purple-400 uppercase bg-purple-950/50 px-2 py-0.5 rounded border border-purple-900">
+                           <Zap className="w-2.5 h-2.5 fill-current" /> H.264 High Profile
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-y-3 gap-x-4">
+                        <div>
+                           <span className="text-[8px] text-slate-600 font-mono block uppercase">Native Res</span>
+                           <span className="text-[11px] font-bold text-slate-200">{item.resolution || "1920x1080"}</span>
+                        </div>
+                        <div>
+                           <span className="text-[8px] text-slate-600 font-mono block uppercase">Frame Rate</span>
+                           <span className="text-[11px] font-bold text-slate-200">{item.frameRate || 60} FPS</span>
+                        </div>
+                        <div>
+                           <span className="text-[8px] text-slate-600 font-mono block uppercase">Aspect Ratio</span>
+                           <span className="text-[11px] font-bold text-slate-200">{item.aspectRatio || "16:9"}</span>
+                        </div>
+                        <div>
+                           <span className="text-[8px] text-slate-600 font-mono block uppercase">Current Bitrate</span>
+                           <span className="text-[11px] font-bold text-emerald-400 font-mono">{selectedQuality === "Auto" ? "Adaptive (~4.2 Mbps)" : selectedQuality === "1080p" ? "5.0 Mbps" : "Variable"}</span>
+                        </div>
+                      </div>
+                    </div>
                   )}
 
                   {/* Stats Bar */}

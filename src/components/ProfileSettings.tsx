@@ -2420,10 +2420,10 @@ const AboutAppPanel: React.FC<AboutAppPanelProps> = ({ onOpenDocs }) => {
   const logoUrl = systemSettings?.logoUrl;
   const logoTextAccent = systemSettings?.logoText?.substring(0, 2) || "NV";
   const latestRelease = DEFAULT_CHANGELOGS[0] || {
-    versionNumber: "v2.6.0",
-    releaseTitle: "Creator Masterpieces Blur Effect & Global System Controls",
+    versionNumber: "v2.7.0",
+    releaseTitle: "Support Ticket System & High-Fidelity Video Engine",
     releaseDate: "2026-11-06",
-    summary: "Peluncuran fitur pengontrol global Creator Masterpieces Blur Effect di System Settings."
+    summary: "Integrasi Support Ticket System, Real Video Quality (H.264/AVC), dan Unified Creator Dashboard."
   };
 
   return (
@@ -2481,7 +2481,7 @@ const AboutAppPanel: React.FC<AboutAppPanelProps> = ({ onOpenDocs }) => {
               </span>
             </div>
             <p className="text-xs text-slate-300 font-sans mt-1">
-              Akses panduan lengkap, changelog rilis, dan dokumentasi dari 19 kategori sistem NightVerse.
+              Akses panduan lengkap, changelog rilis, dan dokumentasi dari {DEFAULT_DOC_CATEGORIES.length} kategori sistem NightVerse.
             </p>
           </div>
         </div>

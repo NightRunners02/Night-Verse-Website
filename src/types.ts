@@ -1,6 +1,6 @@
 export type Role = "SUPER_ADMIN" | "ADMIN" | "MODERATOR" | "USER";
 export type ContentStatus = "PENDING" | "APPROVED" | "REJECTED" | "REVISION" | "DRAFT";
-export type SourceType = "LAPTOP" | "MOBILE" | "URL" | "EMBED";
+export type SourceType = "LAPTOP" | "MOBILE" | "UPLOAD" | "URL" | "EMBED";
 export type PrivacyLevel = "PUBLIC" | "PRIVATE" | "ONLY_ME";
 
 export type BadgeCategory = "ROLE" | "COMMUNITY" | "ACHIEVEMENT" | "SPECIAL";
@@ -162,6 +162,20 @@ export interface Photo {
   category?: string;
 }
 
+export interface VideoRendition {
+  id: string;
+  resolution: string; // e.g. "1080p", "720p", "Original"
+  width: number;
+  height: number;
+  codec: string;
+  bitrate: number;
+  frameRate: number;
+  url: string;
+  fileSize: number;
+}
+
+export type VideoProcessingStatus = "UPLOADING" | "PROCESSING" | "COMPLETED" | "FAILED";
+
 export interface Video {
   id: string;
   userId: string;
@@ -169,13 +183,24 @@ export interface Video {
   authorAvatar: string;
   title: string;
   description: string;
-  sourceType: SourceType;
-  url: string;
-  videoUrls?: string[];
+  sourceType: SourceType; // LAPTOP, MOBILE, URL, EMBED
+  url: string; // Main playback URL or source
+  renditions?: VideoRendition[];
   thumbnailUrl: string;
   duration: number;
-  resolution: string;
-  aspectRatio?: string;
+  resolution: string; // e.g. "1920x1080"
+  aspectRatio?: string; // e.g. "16:9"
+  codec?: string; // e.g. "h264"
+  frameRate?: number;
+  fileSize?: number;
+  processingStatus?: VideoProcessingStatus;
+  
+  // External / Embed fields
+  isExternal?: boolean;
+  externalProvider?: "YOUTUBE" | "VIMEO" | "DIRECT" | "OTHER";
+  embedUrl?: string;
+  externalReference?: string;
+
   tags: string[];
   status: ContentStatus;
   visibility?: ContentVisibility | "PUBLIC" | "PRIVATE";

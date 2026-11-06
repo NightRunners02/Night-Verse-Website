@@ -5,7 +5,8 @@ import {
   ChevronRight, ChevronLeft, ChevronsLeft, ChevronsRight, MoreHorizontal,
   Edit2, Trash2, Heart, MessageSquare, Plus, Save, Send, ShieldAlert, X,
   Smartphone, Globe, Lock, MessageCircle, FileJson, Layers, ExternalLink,
-  Crop as CropIcon, Zap, Loader2, Info, Search, Play, MessageSquareOff
+  Crop as CropIcon, Zap, Loader2, Info, Search, Play, MessageSquareOff,
+  Laptop, Cpu, Maximize, ShieldCheck, Shield, Camera, Link
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { useAppState } from "../context/AppState.js";
@@ -14,9 +15,8 @@ import { db } from "../lib/db.js";
 
 // Defined sources categories
 const sourcesCategories = [
-  { label: "Laptop File", value: "LAPTOP" as const, icon: Monitor },
-  { label: "HP Mobile Sync", value: "MOBILE" as const, icon: Smartphone },
-  { label: "Online URL Reference", value: "URL" as const, icon: Globe },
+  { label: "Upload Media", value: "UPLOAD" as const, icon: CloudUpload },
+  { label: "Online URL", value: "URL" as const, icon: Globe },
   { label: "Real-time Embed", value: "EMBED" as const, icon: Play },
 ];
 
@@ -65,11 +65,17 @@ export const ContentCreator: React.FC = () => {
   const [blogThumbnail, setBlogThumbnail] = useState("");
 
   // Photo / Video parameters
-  const [mediaSource, setMediaSource] = useState<"LAPTOP" | "MOBILE" | "URL" | "EMBED">("LAPTOP");
+  const [mediaSource, setMediaSource] = useState<"UPLOAD" | "URL" | "EMBED">("UPLOAD");
   const [mediaUrl, setMediaUrl] = useState("");
   const [uploadedBase64, setUploadedBase64] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
+
+  // Thumbnail Specific State
+  const [thumbMethod, setThumbMethod] = useState<"UPLOAD" | "CAPTURE" | "URL">("UPLOAD");
+  const [capturedThumb, setCapturedThumb] = useState<string | null>(null);
+  const [captureTime, setCaptureTime] = useState(1.5);
+  const thumbInputRef = React.useRef<HTMLInputElement>(null);
 
   // Video specific parameters
   const [videoDuration, setVideoDuration] = useState("");
@@ -191,7 +197,12 @@ export const ContentCreator: React.FC = () => {
     
     const combined = [...allBlogs, ...allPhotos, ...allVideos].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     setUploads(combined);
-    setUserTags(db.tags.getAll());
+    
+    // Sort tags A-Z (case-insensitive)
+    const sortedTags = db.tags.getAll()
+      .filter(t => t.status === "APPROVED")
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+    setUserTags(sortedTags);
     setIsLoading(false);
   };
 
@@ -228,6 +239,7 @@ export const ContentCreator: React.FC = () => {
     const suggestions = db.tags.getAll().filter(t => 
       t.name.toLowerCase().includes(lastWord) && 
       !t.isBanned &&
+      t.status === "APPROVED" &&
       !tags.some(existing => existing.toLowerCase() === t.name.toLowerCase())
     );
     setAutocompleteSuggestions(suggestions.slice(0, 5));
@@ -268,7 +280,7 @@ export const ContentCreator: React.FC = () => {
     }
 
     if (newTagsToAdd.length > 0) {
-      const updatedTags = [...tags, ...newTagsToAdd];
+      const updatedTags = [...tags, ...newTagsToAdd].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
       setTags(updatedTags);
       syncCurrentContentTags(updatedTags);
       triggerDBSync();
@@ -364,14 +376,12 @@ export const ContentCreator: React.FC = () => {
       triggerToast("Large File Detected", "Processing media file for optimal playback...", "info");
     }
 
-    // Save filename and size for real-time preview
     setUploadedFileName(file.name);
     const sizeInMB = file.size / (1024 * 1024);
     const sizeStr = sizeInMB >= 1 ? `${sizeInMB.toFixed(2)} MB` : `${(file.size / 1024).toFixed(1)} KB`;
     setUploadedFileSize(sizeStr);
 
-    // Auto detect under-the-hood sourceType
-    setMediaSource(isMobileDevice ? "MOBILE" : "LAPTOP");
+    setMediaSource("UPLOAD");
 
     simulateProgress();
     const reader = new FileReader();
@@ -394,6 +404,30 @@ export const ContentCreator: React.FC = () => {
       }
       
       triggerToast("File processed", `${file.name} ready for upload`, "success");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleThumbUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      triggerToast("Invalid Format", "Please select a valid image file (JPG, PNG, WEBP).", "error");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const rawBase64 = reader.result as string;
+      const compressed = await compressImage(rawBase64, 800);
+      if (activeMediaTab === "photo") {
+        setPhotoThumbnail(compressed);
+      } else {
+        setVideoThumbnail(compressed);
+      }
+      setThumbMethod("UPLOAD");
+      triggerToast("Display Frame Ready", "Thumbnail uploaded successfully.", "success");
     };
     reader.readAsDataURL(file);
   };
@@ -479,6 +513,8 @@ export const ContentCreator: React.FC = () => {
       itemData.sourceType = mediaSource;
       itemData.url = mediaUrl;
       itemData.thumbnailUrl = photoThumbnail || mediaUrl;
+      itemData.resolution = videoResolution; // Reusing state for photo too
+      itemData.aspectRatio = videoAspectRatio;
       if (editingContent) db.photos.update(itemData.id, itemData); else db.photos.add(itemData);
     } else if (mediaType === "video") {
       itemData.sourceType = mediaSource;
@@ -489,14 +525,22 @@ export const ContentCreator: React.FC = () => {
         const uniqueEmbedUrls = Array.from(new Set(cleanedEmbedUrls));
         itemData.videoUrls = uniqueEmbedUrls.length > 0 ? uniqueEmbedUrls : (mediaUrl ? [mediaUrl] : []);
         itemData.url = uniqueEmbedUrls[0] || mediaUrl || "";
+        itemData.isExternal = true;
+        itemData.externalProvider = itemData.url.includes("youtube") ? "YOUTUBE" : itemData.url.includes("vimeo") ? "VIMEO" : "OTHER";
       } else {
         itemData.url = mediaUrl;
         itemData.videoUrls = mediaUrl ? [mediaUrl] : [];
+        if (mediaSource === "URL") {
+          itemData.isExternal = true;
+          itemData.externalProvider = "DIRECT";
+        }
       }
       itemData.thumbnailUrl = videoThumbnail;
       itemData.duration = Number(videoDuration) || 0;
       itemData.resolution = videoResolution;
       itemData.aspectRatio = videoAspectRatio;
+      itemData.codec = "h264 (H.264 / AVC)";
+      itemData.fileSize = mediaUrl.startsWith('data:') ? Math.round(mediaUrl.length * 0.75) : 0; // Rough estimate for base64
       if (editingContent) db.videos.update(itemData.id, itemData); else db.videos.add(itemData);
     }
 
@@ -554,17 +598,28 @@ export const ContentCreator: React.FC = () => {
         setBlogCoverSource("URL");
       }
     } else if (item.type === "photo") {
-      setMediaSource(item.sourceType || "URL");
+      const src = (item.sourceType === "LAPTOP" || item.sourceType === "MOBILE") ? "UPLOAD" : (item.sourceType || "URL");
+      setMediaSource(src as any);
       setMediaUrl(item.url || "");
       setPhotoThumbnail(item.thumbnailUrl || item.url || "");
-      if (item.sourceType === "LAPTOP" || item.sourceType === "MOBILE") {
+      if (item.sourceType === "LAPTOP" || item.sourceType === "MOBILE" || item.sourceType === "UPLOAD") {
         setUploadedBase64(item.url || "");
         setUploadedFileName("nightverse_photo.jpg");
         setUploadedFileSize("~850 KB");
         setUploadProgress(100);
       }
+      if (item.thumbnailUrl) {
+        if (item.thumbnailUrl.startsWith("data:")) {
+          setThumbMethod("UPLOAD");
+        } else if (item.thumbnailUrl === item.url) {
+          setThumbMethod("UPLOAD");
+        } else {
+          setThumbMethod("URL");
+        }
+      }
     } else if (item.type === "video") {
-      setMediaSource(item.sourceType || "URL");
+      const src = (item.sourceType === "LAPTOP" || item.sourceType === "MOBILE") ? "UPLOAD" : (item.sourceType || "URL");
+      setMediaSource(src as any);
       setMediaUrl(item.url || "");
       if (item.videoUrls && Array.isArray(item.videoUrls) && item.videoUrls.length > 0) {
         setVideoEmbedUrls(item.videoUrls);
@@ -575,11 +630,18 @@ export const ContentCreator: React.FC = () => {
       setVideoDuration(item.duration?.toString() || "");
       setVideoResolution(item.resolution || "1080p");
       setVideoAspectRatio(item.aspectRatio || "16:9");
-      if (item.sourceType === "LAPTOP" || item.sourceType === "MOBILE") {
+      if (item.sourceType === "LAPTOP" || item.sourceType === "MOBILE" || item.sourceType === "UPLOAD") {
         setUploadedBase64(item.url || "");
         setUploadedFileName("nightverse_video.mp4");
         setUploadedFileSize("~4.8 MB");
         setUploadProgress(100);
+      }
+      if (item.thumbnailUrl) {
+        if (item.thumbnailUrl.startsWith("data:")) {
+          setThumbMethod("UPLOAD");
+        } else {
+          setThumbMethod("URL");
+        }
       }
     }
     
@@ -610,10 +672,10 @@ export const ContentCreator: React.FC = () => {
     const video = document.createElement('video');
     video.src = mediaUrl;
     video.crossOrigin = "anonymous";
-    video.currentTime = 1.5; // Try to capture at 1.5s
+    video.currentTime = captureTime;
     
     video.onloadeddata = () => {
-      video.currentTime = 1.5;
+      video.currentTime = captureTime;
     };
 
     video.onseeked = () => {
@@ -624,7 +686,11 @@ export const ContentCreator: React.FC = () => {
         const ctx = canvas.getContext('2d');
         ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
-        setVideoThumbnail(dataUrl);
+        if (activeMediaTab === "photo") {
+          setPhotoThumbnail(dataUrl);
+        } else {
+          setVideoThumbnail(dataUrl);
+        }
         triggerToast("Frame Captured", "Video thumbnail generated from source material.", "success");
       } catch (err) {
         triggerToast("CORS Restriction", "Cannot capture frame from external domain. Manual URL required.", "error");
@@ -641,39 +707,56 @@ export const ContentCreator: React.FC = () => {
 
   // Automatic video aspect ratio & metadata detection
   useEffect(() => {
-    if (activeMediaTab !== "video" || !mediaUrl) return;
+    if ((activeMediaTab !== "video" && activeMediaTab !== "photo") || !mediaUrl) return;
 
-    // Detect YouTube Shorts specifically as 9:16
-    if (mediaUrl.includes("/shorts/") || mediaUrl.includes("youtube.com/shorts")) {
-      setVideoAspectRatio("9:16");
-      setVideoResolution("1080p");
-      return;
-    }
+    if (activeMediaTab === "video") {
+      // Detect YouTube Shorts specifically as 9:16
+      if (mediaUrl.includes("/shorts/") || mediaUrl.includes("youtube.com/shorts")) {
+        setVideoAspectRatio("9:16");
+        setVideoResolution("1080x1920");
+        setVideoDuration("60");
+        return;
+      }
 
-    if (mediaSource !== "EMBED") {
-      const video = document.createElement("video");
-      video.src = mediaUrl;
-      video.crossOrigin = "anonymous";
-      
-      video.onloadedmetadata = () => {
-        const w = video.videoWidth;
-        const h = video.videoHeight;
-        if (w && h) {
-          const ratio = w / h;
-          let calculatedRatio = "16:9";
-          if (Math.abs(ratio - 9/16) < 0.15) calculatedRatio = "9:16";
-          else if (Math.abs(ratio - 4/5) < 0.1) calculatedRatio = "4:5";
-          else if (Math.abs(ratio - 1) < 0.1) calculatedRatio = "1:1";
-          else if (Math.abs(ratio - 21/9) < 0.15) calculatedRatio = "21:9";
-          else if (ratio < 0.9) calculatedRatio = "9:16";
-          else if (ratio > 1.1) calculatedRatio = "16:9";
-          
-          setVideoAspectRatio(calculatedRatio);
-          setVideoResolution(`${w}px${h}`);
-          if (video.duration) {
-            setVideoDuration(Math.round(video.duration).toString());
+      if (mediaSource !== "EMBED") {
+        const video = document.createElement("video");
+        video.src = mediaUrl;
+        video.crossOrigin = "anonymous";
+        
+        video.onloadedmetadata = () => {
+          const w = video.videoWidth;
+          const h = video.videoHeight;
+          if (w && h) {
+            const ratio = w / h;
+            let calculatedRatio = "16:9";
+            if (Math.abs(ratio - 9/16) < 0.15) calculatedRatio = "9:16";
+            else if (Math.abs(ratio - 4/5) < 0.1) calculatedRatio = "4:5";
+            else if (Math.abs(ratio - 1) < 0.1) calculatedRatio = "1:1";
+            else if (Math.abs(ratio - 21/9) < 0.15) calculatedRatio = "21:9";
+            else if (ratio < 0.9) calculatedRatio = "9:16";
+            else if (ratio > 1.1) calculatedRatio = "16:9";
+            
+            setVideoAspectRatio(calculatedRatio);
+            setVideoResolution(`${w}x${h}`);
+            if (video.duration) {
+              setVideoDuration(Math.round(video.duration).toString());
+            }
           }
-        }
+        };
+      }
+    } else if (activeMediaTab === "photo" && mediaUrl) {
+      const img = new Image();
+      img.src = mediaUrl;
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const w = img.naturalWidth;
+        const h = img.naturalHeight;
+        setVideoResolution(`${w}x${h}`);
+        const ratio = w / h;
+        let calculatedRatio = "16:9";
+        if (Math.abs(ratio - 1) < 0.1) calculatedRatio = "1:1";
+        else if (ratio < 0.9) calculatedRatio = "4:5";
+        setVideoAspectRatio(calculatedRatio);
       };
     }
   }, [mediaUrl, activeMediaTab, mediaSource]);
@@ -1144,50 +1227,76 @@ export const ContentCreator: React.FC = () => {
                   )}
 
                   {(activeMediaTab === "photo" || activeMediaTab === "video") && (
-                    <div className="space-y-6">
-                        <div className="flex md:grid md:grid-cols-3 gap-2 md:gap-3 overflow-x-auto scroll-smooth pb-2 md:pb-0 custom-scrollbar">
-                           {[
-                             { label: "Upload Media", value: "UPLOAD" as const, icon: CloudUpload },
-                             { label: "Online URL Reference", value: "URL" as const, icon: Globe },
-                             ...(activeMediaTab === "video" ? [{ label: "Real-time Embed", value: "EMBED" as const, icon: Play }] : [])
-                           ].map(s => {
-                             const isSelected = s.value === "UPLOAD" 
-                               ? (mediaSource === "LAPTOP" || mediaSource === "MOBILE")
-                               : mediaSource === s.value;
-                             return (
-                               <button
-                                 key={s.value}
-                                 type="button"
-                                 onClick={() => {
-                                   if (s.value === "UPLOAD") {
-                                     setMediaSource(isMobileDevice ? "MOBILE" : "LAPTOP");
-                                   } else {
-                                     setMediaSource(s.value);
-                                   }
-                                 }}
-                                 className={`flex flex-col items-center gap-2 p-3 md:p-4 rounded-2xl border transition-all shrink-0 min-w-[105px] md:min-w-0 flex-1 ${
-                                   isSelected ? "bg-purple-950/20 border-purple-500/50 text-purple-400" : "bg-slate-950 border-slate-800 text-slate-500 hover:bg-slate-900"
-                                 }`}
-                               >
-                                 <s.icon className="w-4 h-4 md:w-5 h-5" />
-                                 <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-tight whitespace-nowrap">{s.label}</span>
-                               </button>
-                             );
-                           })}
+                    <div className="space-y-8">
+                        {/* Source Protocol selection */}
+                        <div className="space-y-3">
+                          <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 font-mono">Input Protocol Selection</label>
+                          <div className="flex md:grid md:grid-cols-4 gap-2 md:gap-3 overflow-x-auto scroll-smooth pb-2 md:pb-0 custom-scrollbar">
+                             {[
+                               { label: "Upload Media", value: "UPLOAD" as const, icon: CloudUpload },
+                               { label: "Online URL", value: "URL" as const, icon: Globe },
+                               ...(activeMediaTab === "video" ? [{ label: "Real-time Embed", value: "EMBED" as const, icon: Play }] : [])
+                             ].map(s => {
+                               const isSelected = mediaSource === s.value;
+                               return (
+                                 <button
+                                   key={s.value}
+                                   type="button"
+                                   onClick={() => setMediaSource(s.value)}
+                                   className={`flex flex-col items-center gap-2 p-3 md:p-4 rounded-2xl border transition-all shrink-0 min-w-[105px] md:min-w-0 flex-1 ${
+                                     isSelected ? "bg-purple-950/20 border-purple-500/50 text-purple-400" : "bg-slate-950 border-slate-800 text-slate-500 hover:bg-slate-900"
+                                   }`}
+                                 >
+                                   <s.icon className="w-4 h-4 md:w-5 h-5" />
+                                   <span className="text-[9px] md:text-[10px] font-bold uppercase tracking-tight whitespace-nowrap">{s.label}</span>
+                                 </button>
+                               );
+                             })}
+                          </div>
                         </div>
+
+                        {/* Technical Metadata Dossier (Visible if metadata exists) */}
+                        {(videoDuration || videoResolution || videoAspectRatio) && activeMediaTab === "video" && (
+                          <div className="p-4 bg-slate-900/50 border border-slate-800 rounded-2xl flex flex-col md:flex-row items-center gap-4 animate-in fade-in slide-in-from-top-2">
+                            <div className="w-10 h-10 bg-purple-500/10 rounded-xl flex items-center justify-center border border-purple-500/20 shrink-0">
+                              <Cpu className="w-5 h-5 text-purple-400" />
+                            </div>
+                            <div className="flex-1 text-center md:text-left">
+                              <h4 className="text-[11px] font-bold text-slate-300 uppercase tracking-widest font-mono">Technical Metadata Dossier</h4>
+                              <div className="flex flex-wrap justify-center md:justify-start gap-4 mt-1">
+                                <div className="flex items-center gap-1.5">
+                                  <Clock className="w-3.5 h-3.5 text-slate-500" />
+                                  <span className="text-xs font-mono text-slate-400">{Math.round(Number(videoDuration))}s</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <Maximize className="w-3.5 h-3.5 text-slate-500" />
+                                  <span className="text-xs font-mono text-slate-400">{videoResolution || "Detecting..."}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <Layers className="w-3.5 h-3.5 text-slate-500" />
+                                  <span className="text-xs font-mono text-slate-400">{videoAspectRatio} AR</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500/80" />
+                                  <span className="text-[10px] font-mono text-emerald-500/80 uppercase font-bold">H.264 Ready</span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
 
                         {mediaSource === "URL" ? (
                            <div className="space-y-4">
                               <div className="space-y-2">
                                  <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 font-mono">
-                                    Source Signal URL
+                                    Direct Stream URL
                                  </label>
                                  <input 
                                    type="text" 
                                    value={mediaUrl}
                                    onChange={(e) => setMediaUrl(e.target.value)}
-                                   placeholder="https://cloud.storage/..." 
-                                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 md:py-3 text-[13px] md:text-sm focus:border-purple-500 outline-none transition-all placeholder:text-slate-700" 
+                                   placeholder="https://storage.nightverse.io/content/raw_stream.mp4" 
+                                   className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 md:py-3 text-[13px] md:text-sm focus:border-purple-500 outline-none transition-all placeholder:text-slate-700 font-mono" 
                                  />
                               </div>
 
@@ -1196,8 +1305,11 @@ export const ContentCreator: React.FC = () => {
                                   {activeMediaTab === "photo" ? (
                                     <img src={mediaUrl} className="w-full h-auto block max-h-[600px] object-contain" alt="Preview reference" onError={(e) => (e.currentTarget.style.display = 'none')} referrerPolicy="no-referrer" />
                                   ) : (
-                                    <video src={mediaUrl} controls className="w-full h-auto block max-h-[600px] bg-slate-950" />
+                                    <video src={mediaUrl} className="w-full h-auto block max-h-[600px] bg-slate-950" muted playsInline />
                                   )}
+                                  <div className="absolute inset-0 bg-slate-950/20 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all pointer-events-none">
+                                    <span className="px-3 py-1.5 bg-slate-900/80 border border-slate-700 rounded-lg text-[10px] font-bold text-slate-300 uppercase tracking-tighter">Remote Stream Live</span>
+                                  </div>
                                 </div>
                               )}
                            </div>
@@ -1206,9 +1318,9 @@ export const ContentCreator: React.FC = () => {
                             <div className="flex items-center justify-between">
                               <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 font-mono flex items-center gap-1.5">
                                 <Play className="w-3.5 h-3.5 text-purple-400" />
-                                External Embed Reference
+                                Multi-Node Embed Protocol
                                 {videoEmbedUrls.length > 1 && (
-                                  <span className="text-purple-400 font-bold font-mono">({videoEmbedUrls.length} Referensi Video)</span>
+                                  <span className="text-purple-400 font-bold font-mono">({videoEmbedUrls.length} Nodes)</span>
                                 )}
                               </label>
                               <button
@@ -1216,7 +1328,7 @@ export const ContentCreator: React.FC = () => {
                                 onClick={() => handleAddVideoUrl()}
                                 className="px-3 py-1.5 bg-purple-950/40 border border-purple-800/60 hover:border-purple-500 text-purple-300 hover:text-white rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1 cursor-pointer"
                               >
-                                <Plus className="w-3.5 h-3.5" /> Tambah Video
+                                <Plus className="w-3.5 h-3.5" /> Add Multi-Node
                               </button>
                             </div>
 
@@ -1231,43 +1343,38 @@ export const ContentCreator: React.FC = () => {
                                           type="text" 
                                           value={url}
                                           onChange={(e) => handleVideoUrlChange(index, e.target.value)}
-                                          placeholder={`URL Video ${index + 1} (YouTube, Vimeo, dll)...`} 
+                                          placeholder={`URL Endpoint ${index + 1} (YouTube, Vimeo, etc)...`} 
                                           className={`w-full bg-slate-950 border ${
                                             url.trim() && !isValid 
                                               ? "border-rose-500/80 focus:border-rose-500 text-rose-300" 
                                               : "border-slate-800 focus:border-purple-500 text-slate-200"
-                                          } rounded-xl px-4 py-2.5 text-xs md:text-sm outline-none transition-all placeholder:text-slate-700 font-sans`} 
+                                          } rounded-xl px-4 py-2.5 text-xs md:text-sm outline-none transition-all placeholder:text-slate-700 font-mono`} 
                                         />
                                       </div>
 
-                                      {/* Small Delete/Trash (X / Minus) Button */}
                                       <button
                                         type="button"
                                         onClick={() => handleRemoveVideoUrl(index)}
                                         disabled={videoEmbedUrls.length === 1 && !url}
                                         className="p-2.5 bg-slate-900 border border-slate-800 hover:border-rose-500/50 hover:bg-rose-950/30 text-slate-400 hover:text-rose-400 rounded-xl transition-all disabled:opacity-30 disabled:pointer-events-none cursor-pointer shrink-0"
-                                        title="Hapus referensi video ini"
                                       >
                                         <X className="w-4 h-4" />
                                       </button>
                                     </div>
 
-                                    {/* Field Validation Message */}
                                     {url.trim() && !isValid && (
                                       <div className="flex items-center gap-1.5 text-rose-400 text-[10px] font-mono font-medium px-1 pt-1">
                                         <AlertCircle className="w-3 h-3 shrink-0 text-rose-500" />
-                                        <span>Format URL embed tidak valid. Harap gunakan URL dari YouTube, Vimeo, atau penyedia embed terverifikasi.</span>
+                                        <span>Invalid embed protocol. Must be YouTube, Vimeo, or DailyMotion.</span>
                                       </div>
                                     )}
 
-                                    {/* Field Realtime Embed Preview */}
                                     {url.trim() && isValid && (
                                       <div className="mt-3 pt-3 border-t border-slate-900 space-y-2">
                                         <div className="flex items-center justify-between text-[10px] font-mono font-bold text-purple-400">
                                           <span className="flex items-center gap-1">
-                                            <Play className="w-3 h-3 text-purple-400" /> Realtime Preview Video #{index + 1}
+                                            <Play className="w-3 h-3 text-purple-400" /> Preview Node #{index + 1}
                                           </span>
-                                          <span className="text-slate-500 font-normal truncate max-w-[220px]">{url}</span>
                                         </div>
                                         <div className={`w-full bg-slate-950 rounded-xl overflow-hidden border border-slate-800 relative group flex items-center justify-center transition-all duration-300 ${getAspectRatioClass(videoAspectRatio)}`}>
                                           <iframe
@@ -1284,7 +1391,6 @@ export const ContentCreator: React.FC = () => {
                                 );
                               })}
                             </div>
-                            <p className="text-[9px] text-slate-600 italic font-mono px-1">Tip: Tambahkan beberapa referensi video embed menggunakan ikon Plus (+). Setiap video dapat dilihat previewnya secara terpisah.</p>
                           </div>
                         ) : (
                            <div className="space-y-4">
@@ -1296,88 +1402,85 @@ export const ContentCreator: React.FC = () => {
                                      isDragging ? 'border-purple-500 bg-purple-950/20' : 'border-slate-800 bg-slate-950 hover:border-purple-500/30'
                                    } ${isUploading ? 'border-purple-500 bg-purple-950/10' : ''}`}
                                  >
-                                    {/* Desktop spacious drag & drop */}
-                                    <div className="hidden md:flex flex-col items-center justify-center p-10">
+                                    <div className="flex flex-col items-center justify-center p-12 text-center">
                                        <input 
                                          type="file" 
                                          onChange={handleFileUpload} 
                                          className="absolute inset-0 opacity-0 cursor-pointer" 
                                          accept={activeMediaTab === "photo" ? "image/jpeg, image/png, image/webp, image/gif" : "video/mp4, video/quicktime, video/x-matroska, video/webm, video/x-msvideo"} 
                                        />
-                                       <CloudUpload className={`w-12 h-12 mb-4 transition-all ${isUploading ? 'text-purple-400 animate-bounce' : 'text-slate-700 group-hover:text-purple-500'}`} />
-                                       <p className="text-sm font-bold text-slate-300">Upload Media</p>
-                                       <p className="text-[11px] text-slate-600 mt-1">Drag assets here or click to browse</p>
-                                       <p className="text-[9px] text-slate-500 mt-2 font-mono">
-                                         {activeMediaTab === "photo" ? "Supports: JPG, JPEG, PNG, WEBP, GIF" : "Supports: MP4, MOV, MKV, WEBM, AVI"}
-                                       </p>
-                                    </div>
-
-                                    {/* Mobile simple upload button */}
-                                    <div className="flex md:hidden p-6 flex-col items-center justify-center relative">
-                                       <input 
-                                         type="file" 
-                                         onChange={handleFileUpload} 
-                                         className="absolute inset-0 opacity-0 cursor-pointer" 
-                                         accept={activeMediaTab === "photo" ? "image/jpeg, image/png, image/webp, image/gif" : "video/mp4, video/quicktime, video/x-matroska, video/webm, video/x-msvideo"} 
-                                       />
-                                       <button type="button" className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2">
-                                          <CloudUpload className="w-4 h-4" /> Upload Media
-                                       </button>
-                                       <p className="text-[10px] text-slate-500 mt-2 font-mono">
-                                         {activeMediaTab === "photo" ? "Accepts: JPG, JPEG, PNG, WEBP, GIF" : "Accepts: MP4, MOV, MKV, WEBM, AVI"}
+                                       <div className={`w-16 h-16 mb-4 rounded-2xl flex items-center justify-center transition-all ${isUploading ? 'bg-purple-500/20 text-purple-400 animate-pulse' : 'bg-slate-900 text-slate-700 group-hover:text-purple-500 group-hover:bg-purple-500/10'}`}>
+                                         <CloudUpload className="w-8 h-8" />
+                                       </div>
+                                       <p className="text-sm font-bold text-slate-300 uppercase tracking-widest font-mono">Upload {activeMediaTab === "video" ? "Video" : "Media"}</p>
+                                       <p className="text-[11px] text-slate-600 mt-1">Select file from device or drag into buffer</p>
+                                       <p className="text-[9px] text-slate-500 mt-4 font-mono px-3 py-1 bg-slate-900/50 rounded-lg border border-slate-800/50 uppercase">
+                                         {activeMediaTab === "photo" ? "Compatible: JPG, PNG, WEBP, GIF" : "Compatible: MP4, MOV, MKV, WEBM (H.264/AVC)"}
                                        </p>
                                     </div>
                                  </div>
                               </div>
 
-                              {/* Real-time upload progress / status indicator */}
                               {isUploading && (
-                                <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl">
-                                  <div className="flex items-center justify-between text-[11px] mb-1">
-                                    <span className="font-mono text-purple-400 animate-pulse font-bold">Uploading file...</span>
-                                    <span className="text-slate-400 font-mono font-semibold">{uploadProgress}%</span>
-                                  </div>
-                                  <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden animate-pulse">
+                                <div className="p-5 bg-slate-950 border border-slate-800 rounded-2xl relative overflow-hidden">
+                                  <div className="absolute top-0 left-0 w-full h-1 bg-slate-900">
                                     <motion.div 
-                                      className="h-full bg-purple-500" 
+                                      className="h-full bg-purple-500 shadow-[0_0_10px_rgba(168,85,247,0.5)]" 
                                       initial={{ width: 0 }}
                                       animate={{ width: `${uploadProgress}%` }}
                                     />
+                                  </div>
+                                  <div className="flex items-center justify-between mt-1">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse" />
+                                      <span className="font-mono text-purple-400 font-bold text-[10px] uppercase tracking-widest">Streaming to Buffer...</span>
+                                    </div>
+                                    <span className="text-slate-400 font-mono font-bold text-xs">{uploadProgress}%</span>
                                   </div>
                                 </div>
                               )}
 
                               {uploadedBase64 && !isUploading && (
-                                <div className="flex flex-col sm:flex-row gap-4 p-4 bg-slate-950 border border-slate-800 rounded-2xl animate-in zoom-in-95">
-                                   <div className="w-full sm:w-32 rounded-xl overflow-hidden border border-slate-800 relative group shrink-0 bg-slate-900/50">
+                                <div className="flex flex-col sm:flex-row gap-5 p-5 bg-slate-950 border border-slate-800 rounded-2xl animate-in zoom-in-95 group/preview">
+                                   <div className="w-full sm:w-40 rounded-xl overflow-hidden border border-slate-800 relative shrink-0 bg-slate-900/50 aspect-video md:aspect-square flex items-center justify-center">
                                       {activeMediaTab === "photo" ? (
-                                        <img src={uploadedBase64 || undefined} className="w-full h-auto block" />
+                                        <img src={uploadedBase64 || undefined} className="w-full h-full object-cover" />
                                       ) : (
-                                        <video src={uploadedBase64 || undefined} className="w-full h-auto block bg-slate-950" />
+                                        <video src={uploadedBase64 || undefined} className="w-full h-full object-cover bg-slate-950" />
                                       )}
-                                      <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
-                                         <button type="button" onClick={() => setUploadedBase64(null)} className="p-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition-colors"><Trash2 className="w-4 h-4" /></button>
+                                      <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover/preview:opacity-100 flex items-center justify-center transition-all backdrop-blur-sm">
+                                         <button type="button" onClick={() => setUploadedBase64(null)} className="p-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl transition-all hover:scale-110 shadow-lg shadow-rose-500/20"><Trash2 className="w-5 h-5" /></button>
                                       </div>
                                    </div>
                                    <div className="flex-1 flex flex-col justify-center min-w-0">
-                                      <div className="flex items-center justify-between gap-2">
-                                        <p className="text-xs font-bold text-slate-200 truncate" title={uploadedFileName}>
-                                          {uploadedFileName || (activeMediaTab === "photo" ? "nightverse_photo.jpg" : "nightverse_video.mp4")}
+                                      <div className="flex items-center justify-between gap-3 mb-2">
+                                        <p className="text-xs font-bold text-slate-200 truncate font-mono uppercase tracking-tight" title={uploadedFileName}>
+                                          {uploadedFileName || (activeMediaTab === "photo" ? "source_image.raw" : "source_video.h264")}
                                         </p>
-                                        <span className="text-[10px] text-slate-500 font-mono shrink-0">
-                                          {uploadedFileSize || (activeMediaTab === "photo" ? "~850 KB" : "~4.8 MB")}
+                                        <span className="text-[10px] text-slate-500 font-mono font-bold px-2 py-0.5 bg-slate-900 rounded border border-slate-800">
+                                          {uploadedFileSize || "~0.0 MB"}
                                         </span>
                                       </div>
-                                      <div className="mt-2 flex items-center justify-between text-[10px]">
-                                        <span className="text-emerald-400 font-mono font-bold">Upload Success</span>
-                                        <span className="text-slate-550 font-mono font-semibold">100%</span>
+                                      
+                                      <div className="space-y-1">
+                                        <div className="flex items-center justify-between text-[10px] font-mono">
+                                          <span className="text-emerald-400 font-bold uppercase tracking-widest flex items-center gap-1.5">
+                                            <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
+                                            Success Ingest
+                                          </span>
+                                          <span className="text-slate-600">100% COMPLETE</span>
+                                        </div>
+                                        <div className="w-full bg-slate-900 h-1 rounded-full overflow-hidden">
+                                          <div className="h-full bg-emerald-500 w-full" />
+                                        </div>
                                       </div>
-                                      <div className="w-full bg-slate-900 h-1.5 rounded-full mt-1.5 overflow-hidden">
-                                        <div className="h-full bg-purple-500 w-full" />
-                                      </div>
-                                      <div className="flex gap-2 mt-3">
-                                         <button type="button" className="text-[9px] font-bold uppercase text-purple-400 flex items-center gap-1 hover:text-purple-300">
-                                            <CropIcon className="w-3 h-3" /> Visual Crop
+
+                                      <div className="flex gap-4 mt-5 pt-4 border-t border-slate-900">
+                                         <button type="button" className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1.5 hover:text-purple-400 transition-colors font-mono">
+                                            <CropIcon className="w-3.5 h-3.5" /> Transform
+                                         </button>
+                                         <button type="button" className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1.5 hover:text-purple-400 transition-colors font-mono">
+                                            <Shield className="w-3.5 h-3.5" /> Verify H.264
                                          </button>
                                       </div>
                                    </div>
@@ -1386,111 +1489,187 @@ export const ContentCreator: React.FC = () => {
                            </div>
                         )}
 
-                       {activeMediaTab === "photo" && (
-                          <div className="space-y-4 pt-6 border-t border-slate-800/30">
-                             <div className="space-y-2">
-                                <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 font-mono flex items-center justify-between">
-                                   <span>Cover Thumbnail URL</span>
-                                   <button type="button" onClick={() => setPhotoThumbnail(mediaUrl)} className="text-cyan-400 hover:text-cyan-300 text-[10px] font-bold">Sync Main Asset</button>
-                                </label>
-                                <input 
-                                  type="url" 
-                                  value={photoThumbnail}
-                                  onChange={(e) => setPhotoThumbnail(e.target.value)}
-                                  placeholder="https://images.unsplash.com/..." 
-                                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:border-purple-500 outline-none transition-all placeholder:text-slate-800" 
-                                />
-                             </div>
-                          </div>
-                       )}
+                       {/* Display Frame Protocol (Unified) */}
+                       <div className="space-y-6 pt-6 border-t border-slate-800/30">
+                         <div className="flex items-center justify-between">
+                            <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 font-mono flex items-center gap-2">
+                               <Camera className="w-3.5 h-3.5 text-purple-400" />
+                               Display Frame Protocol
+                            </label>
+                            <div className="flex bg-slate-950 border border-slate-850 p-1 rounded-xl">
+                               {[
+                                 { id: "UPLOAD", label: "Upload", icon: CloudUpload },
+                                 { id: "CAPTURE", label: "Capture", icon: Zap },
+                                 { id: "URL", label: "URL", icon: Link }
+                               ].map(m => (
+                                 <button
+                                   key={m.id}
+                                   type="button"
+                                   onClick={() => setThumbMethod(m.id as any)}
+                                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase transition-all ${
+                                     thumbMethod === m.id ? "bg-purple-600 text-white" : "text-slate-500 hover:text-slate-300"
+                                   }`}
+                                 >
+                                   <m.icon className="w-3 h-3" /> {m.label}
+                                 </button>
+                               ))}
+                            </div>
+                         </div>
 
-                       {activeMediaTab === "video" && (
-
-                          <div className="space-y-6 pt-6 border-t border-slate-800/30">
-                             {/* Auto Aspect Ratio & Media Parameters */}
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pb-4 border-b border-slate-800/20">
-                               <div className="space-y-2">
-                                 <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 font-mono">
-                                   Video Aspect Ratio
-                                 </label>
-                                 <div className="flex flex-wrap gap-1.5">
-                                   {["16:9", "9:16", "1:1", "4:5", "21:9"].map((ratio) => {
-                                     let label = ratio;
-                                     if (ratio === "16:9") label = "16:9 Landscape";
-                                     else if (ratio === "9:16") label = "9:16 Vertical";
-                                     else if (ratio === "1:1") label = "1:1 Square";
-                                     else if (ratio === "4:5") label = "4:5 Portrait";
-                                     else if (ratio === "21:9") label = "21:9 Cinematic";
-
-                                     return (
-                                       <button
-                                         key={ratio}
-                                         type="button"
-                                         onClick={() => setVideoAspectRatio(ratio)}
-                                         className={`px-2.5 py-1.5 text-[11px] rounded-lg font-mono transition-all border ${
-                                           videoAspectRatio === ratio
-                                             ? "bg-purple-600 border-purple-500 text-white shadow-lg"
-                                             : "bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
-                                         }`}
-                                       >
-                                         {label}
-                                       </button>
-                                     );
-                                   })}
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-4">
+                               {thumbMethod === "UPLOAD" && (
+                                 <div 
+                                   onClick={() => thumbInputRef.current?.click()}
+                                   className="relative border-2 border-dashed border-slate-800 bg-slate-950/50 rounded-2xl p-8 flex flex-col items-center justify-center gap-3 cursor-pointer hover:border-purple-500/50 hover:bg-purple-500/5 transition-all group"
+                                 >
+                                    <input type="file" ref={thumbInputRef} onChange={handleThumbUpload} accept="image/*" className="hidden" />
+                                    <div className="w-12 h-12 rounded-xl bg-slate-900 flex items-center justify-center text-slate-600 group-hover:text-purple-400 transition-colors">
+                                       <CloudUpload className="w-6 h-6" />
+                                    </div>
+                                    <div className="text-center">
+                                       <p className="text-xs font-bold text-slate-300">Select Frame Asset</p>
+                                       <p className="text-[9px] text-slate-600 mt-1 uppercase font-mono">JPG, PNG, WEBP Support</p>
+                                    </div>
                                  </div>
-                                 <p className="text-[9px] text-slate-600 italic font-mono px-1">
-                                   Automatically detected from stream, or select manually for EMBED sources.
-                                 </p>
+                               )}
+
+                               {thumbMethod === "CAPTURE" && (
+                                 <div className="space-y-4">
+                                    <div className="p-4 bg-slate-950/80 border border-slate-800 rounded-2xl text-center space-y-4">
+                                       <div className="flex items-center justify-center gap-2 text-[10px] font-bold text-purple-400 uppercase tracking-widest">
+                                          <Zap className="w-3.5 h-3.5" /> Stream Ingestion
+                                       </div>
+                                       
+                                       <div className="space-y-2">
+                                          <div className="flex justify-between text-[9px] font-mono text-slate-500 uppercase px-1">
+                                             <span>Capture Point</span>
+                                             <span className="text-purple-400 font-bold">{captureTime.toFixed(1)}s</span>
+                                          </div>
+                                          <input 
+                                            type="range" 
+                                            min="0" 
+                                            max={Number(videoDuration) || 60} 
+                                            step="0.1"
+                                            value={captureTime}
+                                            onChange={(e) => setCaptureTime(Number(e.target.value))}
+                                            className="w-full h-1.5 bg-slate-900 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                                          />
+                                       </div>
+
+                                       <p className="text-[10px] text-slate-500">Capture the current active frame from the video buffer as the primary visual display.</p>
+                                       <button 
+                                         type="button" 
+                                         onClick={generateVideoThumbnail}
+                                         disabled={!mediaUrl || mediaSource === "EMBED" || isLoading}
+                                         className="w-full py-3 bg-purple-600/20 border border-purple-500/30 text-purple-400 hover:bg-purple-600 hover:text-white rounded-xl text-xs font-bold uppercase tracking-widest transition-all disabled:opacity-30 flex items-center justify-center gap-2"
+                                       >
+                                          {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Zap className="w-4 h-4" /> Set as Display Frame</>}
+                                       </button>
+                                    </div>
+                                 </div>
+                               )}
+
+                               {thumbMethod === "URL" && (
+                                 <div className="space-y-3">
+                                    <div className="relative group">
+                                       <Link className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-600" />
+                                       <input 
+                                         type="url" 
+                                         value={activeMediaTab === "photo" ? photoThumbnail : videoThumbnail}
+                                         onChange={(e) => activeMediaTab === "photo" ? setPhotoThumbnail(e.target.value) : setVideoThumbnail(e.target.value)}
+                                         placeholder="https://cdn.nightverse.io/covers/..." 
+                                         className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-12 pr-4 py-3 text-sm focus:border-purple-500 outline-none transition-all placeholder:text-slate-800 font-mono" 
+                                       />
+                                    </div>
+                                    <button 
+                                      type="button" 
+                                      className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold uppercase rounded-xl border border-slate-700 transition-all"
+                                      onClick={() => triggerToast("Reference Applied", "Remote thumbnail URL has been registered.", "info")}
+                                    >
+                                       Apply URL Reference
+                                    </button>
+                                 </div>
+                               )}
+                            </div>
+
+                            <div className="relative group">
+                               <label className="text-[8px] uppercase font-black text-slate-700 tracking-[0.2em] mb-2 block font-mono">Active Frame Preview</label>
+                                <div className="aspect-video w-full rounded-2xl overflow-hidden border border-slate-800 bg-slate-950 relative shadow-2xl">
+                                  {(activeMediaTab === "photo" ? photoThumbnail : videoThumbnail) ? (
+                                    <>
+                                       <img 
+                                         src={activeMediaTab === "photo" ? photoThumbnail : videoThumbnail} 
+                                         className="w-full h-full object-cover animate-in fade-in zoom-in-95 duration-500" 
+                                         onError={(e) => e.currentTarget.src = "https://placehold.co/600x400/020617/475569?text=Frame+Registry+Empty"}
+                                       />
+                                       <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all backdrop-blur-[2px]">
+                                          <button type="button" onClick={() => activeMediaTab === "photo" ? setPhotoThumbnail("") : setVideoThumbnail("")} className="p-3 bg-rose-600 hover:bg-rose-500 text-white rounded-2xl shadow-xl transition-all hover:scale-110">
+                                             <Trash2 className="w-5 h-5" />
+                                          </button>
+                                       </div>
+                                    </>
+                                  ) : (
+                                    <div className="w-full h-full flex flex-col items-center justify-center text-slate-800 gap-2">
+                                       <Camera className="w-10 h-10 opacity-20" />
+                                       <span className="text-[9px] font-bold uppercase tracking-widest opacity-30">Waiting for Ingest...</span>
+                                    </div>
+                                  )}
+                               </div>
+                            </div>
+                         </div>
+                       </div>
+
+                       {/* Manual Metadata Override (Only for EMBED or Special cases) */}
+                       {activeMediaTab === "video" && (
+                         <div className="space-y-4 pt-6 border-t border-slate-800/30">
+                           <div className="flex items-center justify-between">
+                             <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 font-mono">Stream Parameters Override</label>
+                             <span className="text-[9px] text-slate-700 font-mono">Use for external nodes</span>
+                           </div>
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                               <div className="space-y-2">
+                                 <label className="text-[10px] uppercase font-bold text-slate-600 font-mono">Aspect Ratio Node</label>
+                                 <div className="flex flex-wrap gap-2">
+                                   {["16:9", "9:16", "1:1", "4:5", "21:9"].map((ratio) => (
+                                     <button
+                                       key={ratio}
+                                       type="button"
+                                       onClick={() => setVideoAspectRatio(ratio)}
+                                       className={`px-3 py-1.5 text-[10px] rounded-lg font-mono transition-all border ${
+                                         videoAspectRatio === ratio
+                                           ? "bg-purple-600 border-purple-500 text-white"
+                                           : "bg-slate-950 border-slate-800 text-slate-500 hover:text-slate-300"
+                                       }`}
+                                     >
+                                       {ratio}
+                                     </button>
+                                   ))}
+                                 </div>
                                </div>
 
                                <div className="grid grid-cols-2 gap-3">
                                  <div className="space-y-2">
-                                   <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 font-mono">
-                                     Duration (sec)
-                                   </label>
+                                   <label className="text-[10px] uppercase font-bold text-slate-600 font-mono">Time (SEC)</label>
                                    <input
                                      type="number"
                                      value={videoDuration}
                                      onChange={(e) => setVideoDuration(e.target.value)}
-                                     placeholder="e.g. 15"
-                                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm focus:border-purple-500 outline-none transition-all placeholder:text-slate-800"
+                                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs focus:border-purple-500 outline-none transition-all font-mono"
                                    />
                                  </div>
                                  <div className="space-y-2">
-                                   <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 font-mono">
-                                     Resolution
-                                   </label>
+                                   <label className="text-[10px] uppercase font-bold text-slate-600 font-mono">RES Node</label>
                                    <input
                                      type="text"
                                      value={videoResolution}
                                      onChange={(e) => setVideoResolution(e.target.value)}
-                                     placeholder="e.g. 1080p"
-                                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm focus:border-purple-500 outline-none transition-all placeholder:text-slate-800"
+                                     className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-xs focus:border-purple-500 outline-none transition-all font-mono"
                                    />
                                  </div>
                                </div>
-                             </div>
-                            <div className="space-y-2">
-                               <label className="text-[10px] uppercase font-bold tracking-widest text-slate-500 font-mono flex items-center justify-between">
-                                  <span>Video Display Frame (Thumbnail)</span>
-                                  <div className="flex gap-2">
-                                     {mediaUrl && mediaSource !== "EMBED" && (
-                                       <button type="button" onClick={generateVideoThumbnail} className="text-cyan-400 hover:text-cyan-300 text-[10px] font-bold flex items-center gap-1">
-                                          <Zap className="w-3 h-3" /> Auto Ingest Frame
-                                       </button>
-                                     )}
-                                  </div>
-                               </label>
-                               <input 
-                                 type="text" 
-                                 value={videoThumbnail}
-                                 onChange={(e) => setVideoThumbnail(e.target.value)}
-                                 placeholder={mediaSource === "EMBED" ? "URL to custom cover image or frame" : "https://video-cdn.com/thumb.jpg"} 
-                                 className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm focus:border-purple-500 outline-none transition-all placeholder:text-slate-800" 
-                               />
-                            </div>
-
-                        </div>
+                           </div>
+                         </div>
                        )}
                     </div>
                   )}
@@ -1554,7 +1733,7 @@ export const ContentCreator: React.FC = () => {
                                       }
                                     });
                                     if (newTagsToAdd.length > 0) {
-                                      const updatedTags = [...tags, ...newTagsToAdd];
+                                      const updatedTags = [...tags, ...newTagsToAdd].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
                                       setTags(updatedTags);
                                       syncCurrentContentTags(updatedTags);
                                       triggerDBSync();

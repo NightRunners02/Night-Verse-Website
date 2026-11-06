@@ -146,12 +146,20 @@ export const DEFAULT_DOC_CATEGORIES: DocumentationCategory[] = [
     displayOrder: 18
   },
   {
+    id: "help-center",
+    name: "Help Center & Support",
+    slug: "help-center-support",
+    description: "Sistem tiket bantuan, laporan teknis, dan pusat layanan pengguna NightVerse.",
+    icon: "MessageCircle",
+    displayOrder: 19
+  },
+  {
     id: "updates-changelog",
     name: "Updates & Changelog",
     slug: "updates-changelog",
     description: "Catatan rilis resmi, perkembangan website dari versi awal hingga rilis terbaru.",
     icon: "History",
-    displayOrder: 19
+    displayOrder: 20
   }
 ];
 
@@ -171,10 +179,11 @@ Platform ini memadukan direktori karya visual (Photo & Animated GIF), media berg
 2. **Creator Directory**: Direktori profil seluruh pengguna dan kreator NightVerse beserta peringkat Leaderboard.
 3. **Create Work**: Ruang unggah karya mandiri yang dilengkapi fitur auto-detect Creative Title.
 4. **Tags Directory**: Ensiklopedia taksonomi tag untuk mengelompokkan karya berdasarkan Hak Cipta, Karakter, Artis, Umum, dan Metadata.
-5. **Profile Settings**: Manajemen informasi profil, lencana, pengaturan privasi granular, dan pusat dokumentasi resmi.`,
+5. **Help Center**: Pusat bantuan dan sistem tiket dukungan terintegrasi.
+6. **Profile Settings**: Manajemen informasi profil, lencana, pengaturan privasi granular, dan pusat dokumentasi resmi.`,
     coverImage: "https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200&auto=format&fit=crop&q=80",
     status: "PUBLISHED",
-    version: "v2.6.0",
+    version: "v2.7.0",
     authorId: "superadmin",
     authorName: "NightVerse Core Ops",
     authorRole: "SUPER_ADMIN",
@@ -205,7 +214,7 @@ Platform ini memadukan direktori karya visual (Photo & Animated GIF), media berg
     ],
     tags: ["getting-started", "overview", "navigation", "ecosystem"],
     createdAt: "2026-10-10T00:00:00.000Z",
-    updatedAt: "2026-11-06T02:00:00.000Z",
+    updatedAt: "2026-11-06T05:00:00.000Z",
     publishedAt: "2026-10-10T00:00:00.000Z"
   },
   {
@@ -223,7 +232,7 @@ Platform ini memadukan direktori karya visual (Photo & Animated GIF), media berg
 - **USER**: Kreator dan penjelajah yang dapat menerbitkan karya, berinteraksi, dan mengumpulkan lencana.`,
     coverImage: "https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=1200&auto=format&fit=crop&q=80",
     status: "PUBLISHED",
-    version: "v2.6.0",
+    version: "v2.7.0",
     authorId: "superadmin",
     authorName: "NightVerse Core Ops",
     authorRole: "SUPER_ADMIN",
@@ -235,7 +244,7 @@ Platform ini memadukan direktori karya visual (Photo & Animated GIF), media berg
     callouts: [{ type: "tip", title: "Keamanan Sandi", text: "Gunakan kombinasi sandi yang kuat untuk melindungi karya Anda." }],
     tags: ["auth", "login", "roles", "security"],
     createdAt: "2026-10-10T00:00:00.000Z",
-    updatedAt: "2026-11-06T02:00:00.000Z",
+    updatedAt: "2026-11-06T05:00:00.000Z",
     publishedAt: "2026-10-10T00:00:00.000Z"
   },
   {
@@ -247,7 +256,7 @@ Platform ini memadukan direktori karya visual (Photo & Animated GIF), media berg
     content: `Menu **Profile Settings** memungkinkan setiap pengguna mengatur identitas publik mereka secara mendetail. Anda dapat memperbarui foto profil, banner latar belakang, bio, hingga tautan media sosial (Twitter, Instagram, GitHub, YouTube, Discord, TikTok).`,
     coverImage: "https://images.unsplash.com/photo-1507238691740-187a5b1d37b8?w=1200&auto=format&fit=crop&q=80",
     status: "PUBLISHED",
-    version: "v2.6.0",
+    version: "v2.7.0",
     authorId: "superadmin",
     authorName: "NightVerse Core Ops",
     authorRole: "SUPER_ADMIN",
@@ -259,7 +268,7 @@ Platform ini memadukan direktori karya visual (Photo & Animated GIF), media berg
     callouts: [{ type: "info", title: "Pratinjau Instan", text: "Gunakan fitur Draft Preview untuk melihat tampilan profil Anda sebelum disimpan ke publik." }],
     tags: ["profile", "settings", "avatar", "social"],
     createdAt: "2026-10-12T00:00:00.000Z",
-    updatedAt: "2026-11-06T02:00:00.000Z",
+    updatedAt: "2026-11-06T05:00:00.000Z",
     publishedAt: "2026-10-12T00:00:00.000Z"
   },
   {
@@ -271,7 +280,7 @@ Platform ini memadukan direktori karya visual (Photo & Animated GIF), media berg
     content: `**Creator Directory** adalah pusat jejaring untuk menemukan kreator berbakat di NightVerse. Saat Anda mengklik profil seorang kreator, sistem akan menampilkan **Visitor Profile View** murni di mana informasi internal seperti status privasi, tombol edit, atau pengaturan konfigurasi tersembunyi dari pandangan publik.`,
     coverImage: "https://images.unsplash.com/photo-1522071820081-009f0129c71c?w=1200&auto=format&fit=crop&q=80",
     status: "PUBLISHED",
-    version: "v2.6.0",
+    version: "v2.7.0",
     authorId: "superadmin",
     authorName: "NightVerse Core Ops",
     authorRole: "SUPER_ADMIN",
@@ -283,31 +292,36 @@ Platform ini memadukan direktori karya visual (Photo & Animated GIF), media berg
     callouts: [{ type: "tip", title: "Visitor View Murni", text: "Visitor View menampilkan karya publik, bio, lencana, dan statistik pengikut secara transparan." }],
     tags: ["directory", "creators", "visitor-view", "network"],
     createdAt: "2026-10-15T00:00:00.000Z",
-    updatedAt: "2026-11-06T02:00:00.000Z",
+    updatedAt: "2026-11-06T05:00:00.000Z",
     publishedAt: "2026-10-15T00:00:00.000Z"
   },
   {
     id: "doc-creator-dashboard",
-    title: "Creator Dashboard & Analitik Konten",
-    slug: "creator-dashboard-analitik",
+    title: "Creator Dashboard & Unified Upload Node",
+    slug: "creator-dashboard-unified-upload",
     categoryId: "creator-dashboard",
-    summary: "Memantau performa publikasi karya, statistik tayangan, likes, dan manajemen publikasi mandiri.",
-    content: `Creator Dashboard menyediakan ringkasan analitik komprehensif bagi kreator untuk melacak jumlah total karya yang diterbitkan, total views, likes, komentar, serta status moderasi persetujuan konten.`,
+    summary: "Memantau performa publikasi karya, statistik tayangan, dan sistem upload tunggal (Laptop/Mobile).",
+    content: `Creator Dashboard menyediakan ringkasan analitik komprehensif bagi kreator. Sejak rilis v2.7.0, NightVerse memperkenalkan **Unified Upload Node**, sebuah sistem pemilihan file tunggal yang secara otomatis mendeteksi apakah Anda menggunakan Laptop (Desktop) atau Perangkat Mobile.
+
+### Fitur Unggulan:
+- **Unified Video Upload**: Satu area untuk drag-and-drop desktop atau pemilihan galeri mobile.
+- **Display Frame Protocol**: Tiga metode thumbnail; Upload Image, Capture Frame (mengambil gambar dari video), atau Online URL.
+- **Alphabetical Tags**: Pengurutan tag A-Z secara otomatis pada registry pribadi.`,
     coverImage: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=1200&auto=format&fit=crop&q=80",
     status: "PUBLISHED",
-    version: "v2.6.0",
+    version: "v2.7.0",
     authorId: "superadmin",
     authorName: "NightVerse Core Ops",
     authorRole: "SUPER_ADMIN",
     displayOrder: 5,
     steps: [
       { stepNumber: 1, title: "Akses Dashboard", description: "Buka Creator Dashboard dari menu utama." },
-      { stepNumber: 2, title: "Tinjau Metrik", description: "Analisis statistik views dan interaksi pada setiap karya Anda." }
+      { stepNumber: 2, title: "Gunakan Upload Media", description: "Gunakan tombol Upload tunggal untuk video atau foto tanpa perlu memilih jenis perangkat." }
     ],
-    callouts: [{ type: "info", title: "Real-time Metrics", text: "Statistik diperbarui secara real-time setiap kali pengguna berinteraksi dengan karya Anda." }],
-    tags: ["dashboard", "analytics", "views", "creators"],
+    callouts: [{ type: "info", title: "Smart Ingest", text: "Sistem secara otomatis menyesuaikan alur pemrosesan berdasarkan format file yang diunggah." }],
+    tags: ["dashboard", "upload", "unified", "creators"],
     createdAt: "2026-10-16T00:00:00.000Z",
-    updatedAt: "2026-11-06T02:00:00.000Z",
+    updatedAt: "2026-11-06T05:00:00.000Z",
     publishedAt: "2026-10-16T00:00:00.000Z"
   },
   {
@@ -316,10 +330,10 @@ Platform ini memadukan direktori karya visual (Photo & Animated GIF), media berg
     slug: "create-work-auto-title",
     categoryId: "create-work",
     summary: "Panduan publikasi karya blog, foto, dan video dengan fitur otomatisasi judul dari nama file media.",
-    content: `Fitur **Create Work** memudahkan kreator mempublikasikan karya baru. Dilengkapi dengan **Auto-Detect Creative Title**, sistem secara otomatis membaca nama file asli yang diunggah dari laptop maupun perangkat seluler, menghapus ekstensi file (\`.jpg\`, \`png\`, \`mp4\`, dll.), dan mengisikannya ke kolom judul secara instan.`,
+    content: `Fitur **Create Work** memudahkan kreator mempublikasikan karya baru. Dilengkapi dengan **Auto-Detect Creative Title**, sistem secara otomatis membaca nama file asli yang diunggah, menghapus ekstensi file, dan mengisikannya ke kolom judul secara instan.`,
     coverImage: "https://images.unsplash.com/photo-1542751371-adc38448a05e?w=1200&auto=format&fit=crop&q=80",
     status: "PUBLISHED",
-    version: "v2.6.0",
+    version: "v2.7.0",
     authorId: "superadmin",
     authorName: "NightVerse Core Ops",
     authorRole: "SUPER_ADMIN",
@@ -331,7 +345,7 @@ Platform ini memadukan direktori karya visual (Photo & Animated GIF), media berg
     callouts: [{ type: "tip", title: "Efisiensi Upload", text: "Anda tetap dapat menyesuaikan judul otomatis sesuai kebutuhan sebelum menekan tombol publikasi." }],
     tags: ["create-work", "upload", "auto-title", "media"],
     createdAt: "2026-10-18T00:00:00.000Z",
-    updatedAt: "2026-11-06T02:00:00.000Z",
+    updatedAt: "2026-11-06T05:00:00.000Z",
     publishedAt: "2026-10-18T00:00:00.000Z"
   },
   {
@@ -343,7 +357,7 @@ Platform ini memadukan direktori karya visual (Photo & Animated GIF), media berg
     content: `Photo Management NightVerse mendukung berbagai format gambar termasuk **GIF Animasi**. Sistem mendeteksi format GIF secara otomatis dan mempertahankan seluruh frame, durasi animasi, serta looping asli tanpa konversi ke format statis.`,
     coverImage: "https://images.unsplash.com/photo-1579783902614-a3fb3927b675?w=1200&auto=format&fit=crop&q=80",
     status: "PUBLISHED",
-    version: "v2.6.0",
+    version: "v2.7.0",
     authorId: "superadmin",
     authorName: "NightVerse Core Ops",
     authorRole: "SUPER_ADMIN",
@@ -355,31 +369,37 @@ Platform ini memadukan direktori karya visual (Photo & Animated GIF), media berg
     callouts: [{ type: "info", title: "Zero-Loss GIF", text: "Kompresi tidak akan merusak frame animasi GIF asli Anda." }],
     tags: ["photos", "gif", "animation", "images"],
     createdAt: "2026-10-20T00:00:00.000Z",
-    updatedAt: "2026-11-06T02:00:00.000Z",
+    updatedAt: "2026-11-06T05:00:00.000Z",
     publishedAt: "2026-10-20T00:00:00.000Z"
   },
   {
     id: "doc-video-management",
-    title: "Video Management & Modern Non-Autoplay Player",
-    slug: "video-management-modern-player",
+    title: "Video Management & Real Quality System (H.264/AVC)",
+    slug: "video-management-real-quality",
     categoryId: "video-management",
-    summary: "Pengelolaan video lokal, pemutar video modern dengan tombol kontrol lengkap dan kebijakan Non-Autoplay.",
-    content: `NightVerse dilengkapi dengan pemutar video modern berdesain dark theme. Mengikuti standar UX profesional, video **tidak diputar secara otomatis (Non-Autoplay)** saat halaman dibuka dan menampilkan tombol Play besar di tengah. Kontrol bawah mencakup progress bar, waktu, volume, skip 10 detik, Picture-in-Picture, dan Fullscreen.`,
+    summary: "Sistem kualitas video nyata, encoding H.264/AVC, dan dukungan multi-resolusi hingga 1080p.",
+    content: `NightVerse v2.7.0 memperkenalkan **Real Video Quality System**. Setiap video yang diunggah akan diproses melalui simulasi transcoding menghasilkan rendition kualitas yang sesuai (144p, 240p, 360p, 480p, 720p, 1080p).
+
+### Spesifikasi Teknis:
+- **Codec**: H.264 / AVC (Advanced Video Coding) dalam container MP4.
+- **Audio**: AAC (Advanced Audio Coding) untuk kejernihan suara maksimal.
+- **Adaptive Bitrate**: Pilihan kualitas hanya muncul jika file resolusi tersebut tersedia (tidak ada upscaling palsu).
+- **Non-Autoplay**: Menghemat bandwidth dan memberikan kontrol penuh kepada penonton.`,
     coverImage: "https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=1200&auto=format&fit=crop&q=80",
     status: "PUBLISHED",
-    version: "v2.6.0",
+    version: "v2.7.0",
     authorId: "superadmin",
     authorName: "NightVerse Core Ops",
     authorRole: "SUPER_ADMIN",
     displayOrder: 8,
     steps: [
-      { stepNumber: 1, title: "Putar Video Manual", description: "Tekan tombol Play besar di tengah video untuk memulai pemutaran." },
-      { stepNumber: 2, title: "Gunakan Bilah Kontrol", description: "Manfaatkan tombol skip 10 detik, volume, atau PiP sesuai kenyamanan Anda." }
+      { stepNumber: 1, title: "Ganti Kualitas", description: "Gunakan menu pengaturan pada video player untuk memilih resolusi yang diinginkan." },
+      { stepNumber: 2, title: "Verify Codec", description: "Dapatkan info codec H.264 langsung pada Technical Metadata Dossier di dashboard." }
     ],
-    callouts: [{ type: "tip", title: "Non-Autoplay Policy", text: "Kebijakan ini menghemat bandwidth pengguna dan memastikan pengalaman menonton yang terkontrol." }],
-    tags: ["videos", "player", "controls", "streaming"],
+    callouts: [{ type: "tip", title: "High Profile", text: "Sistem kami memprioritaskan H.264 High Profile untuk keseimbangan kualitas dan ukuran file." }],
+    tags: ["videos", "h264", "quality", "transcoding"],
     createdAt: "2026-10-22T00:00:00.000Z",
-    updatedAt: "2026-11-06T02:00:00.000Z",
+    updatedAt: "2026-11-06T05:00:00.000Z",
     publishedAt: "2026-10-22T00:00:00.000Z"
   },
   {
@@ -391,7 +411,7 @@ Platform ini memadukan direktori karya visual (Photo & Animated GIF), media berg
     content: `Blog Management memungkinkan kreator menerbitkan artikel, ulasan karya, atau tutorial mendalam yang dilengkapi dengan penanda tag taksonomi dan thumbnail sampul menarik.`,
     coverImage: "https://images.unsplash.com/photo-1499750310107-5fef28a66643?w=1200&auto=format&fit=crop&q=80",
     status: "PUBLISHED",
-    version: "v2.6.0",
+    version: "v2.7.0",
     authorId: "superadmin",
     authorName: "NightVerse Core Ops",
     authorRole: "SUPER_ADMIN",
@@ -403,7 +423,7 @@ Platform ini memadukan direktori karya visual (Photo & Animated GIF), media berg
     callouts: [{ type: "info", title: "Cover Thumbnail", text: "Tambahkan thumbnail sampul agar artikel Anda lebih menarik di Explore Feed." }],
     tags: ["blogs", "articles", "writing", "publishing"],
     createdAt: "2026-10-23T00:00:00.000Z",
-    updatedAt: "2026-11-06T02:00:00.000Z",
+    updatedAt: "2026-11-06T05:00:00.000Z",
     publishedAt: "2026-10-23T00:00:00.000Z"
   },
   {
@@ -415,7 +435,7 @@ Platform ini memadukan direktori karya visual (Photo & Animated GIF), media berg
     content: `Explore Feed adalah pusat kurasi karya visual NightVerse. Pengguna dapat menyaring konten berdasarkan kategori media (All, Photos, Videos, Blogs) serta melakukan pencarian taksonomi tag secara instan.`,
     coverImage: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1200&auto=format&fit=crop&q=80",
     status: "PUBLISHED",
-    version: "v2.6.0",
+    version: "v2.7.0",
     authorId: "superadmin",
     authorName: "NightVerse Core Ops",
     authorRole: "SUPER_ADMIN",
@@ -427,7 +447,7 @@ Platform ini memadukan direktori karya visual (Photo & Animated GIF), media berg
     callouts: [{ type: "tip", title: "GIF Bergerak Otomatis", text: "Seluruh animasi GIF pada feed diputar secara otomatis dan real-time." }],
     tags: ["explore", "feed", "curation", "media"],
     createdAt: "2026-10-24T00:00:00.000Z",
-    updatedAt: "2026-11-06T02:00:00.000Z",
+    updatedAt: "2026-11-06T05:00:00.000Z",
     publishedAt: "2026-10-24T00:00:00.000Z"
   },
   {
@@ -439,7 +459,7 @@ Platform ini memadukan direktori karya visual (Photo & Animated GIF), media berg
     content: `Content Lightbox menyajikan karya dalam mode fokus layar penuh. Pengguna dapat melihat detail lengkap karya, berinteraksi melalui tombol Like, memberikan komentar real-time, serta mengeklik tag untuk menjelajahi karya sejenis.`,
     coverImage: "https://images.unsplash.com/photo-1534447677768-be436bb09401?w=1200&auto=format&fit=crop&q=80",
     status: "PUBLISHED",
-    version: "v2.6.0",
+    version: "v2.7.0",
     authorId: "superadmin",
     authorName: "NightVerse Core Ops",
     authorRole: "SUPER_ADMIN",
@@ -451,41 +471,38 @@ Platform ini memadukan direktori karya visual (Photo & Animated GIF), media berg
     callouts: [{ type: "info", title: "Fokus Imersif", text: "Lightbox dirancang untuk memberikan pengalaman menikmati karya seni digital secara maksimal." }],
     tags: ["lightbox", "comments", "fullscreen", "interaction"],
     createdAt: "2026-10-24T12:00:00.000Z",
-    updatedAt: "2026-11-06T02:00:00.000Z",
+    updatedAt: "2026-11-06T05:00:00.000Z",
     publishedAt: "2026-10-24T12:00:00.000Z"
   },
   {
     id: "doc-tags-directory-taxonomy",
-    title: "Sistem Taksonomi 5-Kategori, Tag Ambigu & Instant Category Update",
-    slug: "sistem-taksonomi-5-kategori-tag-ambigu",
+    title: "Sistem Taksonomi 5-Kategori & Alphabetical Sorting",
+    slug: "sistem-taksonomi-5-kategori-sorting",
     categoryId: "tags-directory",
-    summary: "Struktur klasifikasi tag NightVerse (Copyright, General, Artist, Character, Metadata), penanda ambigu, dan mekanisme Instant Category Update seketika.",
-    content: `Tags Directory adalah tulang punggung pengorganisasian metadata konten di NightVerse. Setiap tag wajib memiliki satu kategori utama (Type) untuk memudahkan navigasi, pengelompokan karya, dan pencarian.
+    summary: "Struktur klasifikasi tag NightVerse dan pengurutan otomatis A-Z untuk konsistensi direktori.",
+    content: `Tags Directory adalah tulang punggung pengorganisasian metadata konten di NightVerse. Sejak rilis v2.7.0, seluruh tag secara otomatis diurutkan secara **Alphabetical (A-Z)** tanpa membedakan huruf besar/kecil.
 
 ### Lima Kategori Tag Utama:
-1. **Copyright**: Nama karya cipta, franchise, judul anime, game, manga, atau studio.
-2. **General**: Tag umum yang mendeskripsikan atribut visual, pakaian, latar belakang, pose, atau objek.
-3. **Artist**: Nama kreator, ilustrator, animator, atau desainer visual pembuat karya asli.
+1. **Copyright**: Nama karya cipta, franchise, judul anime, game, manga.
+2. **General**: Atribut visual, pakaian, latar belakang, pose, atau objek.
+3. **Artist**: Nama kreator atau ilustrator pembuat karya asli.
 4. **Character**: Nama tokoh atau karakter spesifik.
-5. **Metadata**: Informasi teknis terkait media seperti \`4k\`, \`wallpaper\`, \`gif_animation\`.
-
-### Mekanisme Instant Category Update:
-Mulai versi v2.5.0, NightVerse menerapkan arsitektur *Instant Category Update* yang langsung memindahkan tag antar kategori seketika saat disimpan tanpa perlu refresh halaman.`,
+5. **Metadata**: Informasi teknis terkait media (e.g. 4k, wallpaper).`,
     coverImage: "https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?w=1200&auto=format&fit=crop&q=80",
     status: "PUBLISHED",
-    version: "v2.6.0",
+    version: "v2.7.0",
     authorId: "superadmin",
     authorName: "NightVerse Core Ops",
     authorRole: "SUPER_ADMIN",
     displayOrder: 12,
     steps: [
       { stepNumber: 1, title: "Buka Tags Directory", description: "Akses menu dari bilah navigasi." },
-      { stepNumber: 2, title: "Edit Tag", description: "Ubah kategori tipe dan simpan perubahan secara instan." }
+      { stepNumber: 2, title: "Cari Tag", description: "Gunakan filter pencarian; daftar akan selalu terurut secara abjad." }
     ],
-    callouts: [{ type: "tip", title: "Real-time Update", text: "Category counter langsung diperbarui otomatis tanpa jeda." }],
-    tags: ["tags", "taxonomy", "categories", "instant-update"],
+    callouts: [{ type: "tip", title: "A-Z Consistency", text: "Pengurutan abjad memudahkan penemuan tag yang sudah ada dan mencegah duplikasi." }],
+    tags: ["tags", "taxonomy", "sorting", "alphabetical"],
     createdAt: "2026-10-25T11:00:00.000Z",
-    updatedAt: "2026-11-06T02:00:00.000Z",
+    updatedAt: "2026-11-06T05:00:00.000Z",
     publishedAt: "2026-10-25T11:00:00.000Z"
   },
   {
@@ -497,7 +514,7 @@ Mulai versi v2.5.0, NightVerse menerapkan arsitektur *Instant Category Update* y
     content: `Sistem Badges NightVerse dirancang untuk menghargai kontribusi, pencapaian, dan otoritas tata kelola komunitas melalui lencana berjenjang dari Tier 0 hingga Tier 5.`,
     coverImage: "https://images.unsplash.com/photo-1579546929518-9e396f3cc809?w=1200&auto=format&fit=crop&q=80",
     status: "PUBLISHED",
-    version: "v2.6.0",
+    version: "v2.7.0",
     authorId: "superadmin",
     authorName: "NightVerse Core Ops",
     authorRole: "SUPER_ADMIN",
@@ -508,7 +525,7 @@ Mulai versi v2.5.0, NightVerse menerapkan arsitektur *Instant Category Update* y
     callouts: [{ type: "info", title: "Otoritas Tier", text: "Setiap penganugerahan lencana dicatat dalam System Audit Log." }],
     tags: ["badges", "tiers", "achievements"],
     createdAt: "2026-10-30T14:30:00.000Z",
-    updatedAt: "2026-11-06T02:00:00.000Z",
+    updatedAt: "2026-11-06T05:00:00.000Z",
     publishedAt: "2026-10-30T14:30:00.000Z"
   },
   {
@@ -520,7 +537,7 @@ Mulai versi v2.5.0, NightVerse menerapkan arsitektur *Instant Category Update* y
     content: `Creator Leaderboard menampilkan kreator paling berpengaruh di platform berdasarkan jumlah publikasi, apresiasi publik (*likes*), dan keterlibatan pengikut.`,
     coverImage: "https://images.unsplash.com/photo-1511512578047-dfb367046420?w=1200&auto=format&fit=crop&q=80",
     status: "PUBLISHED",
-    version: "v2.6.0",
+    version: "v2.7.0",
     authorId: "superadmin",
     authorName: "NightVerse Core Ops",
     authorRole: "SUPER_ADMIN",
@@ -531,7 +548,7 @@ Mulai versi v2.5.0, NightVerse menerapkan arsitektur *Instant Category Update* y
     callouts: [{ type: "tip", title: "Podium 3 Besar", text: "Kreator teratas menduduki podium khusus dengan lencana kehormatan." }],
     tags: ["leaderboard", "ranking", "creators", "score"],
     createdAt: "2026-10-31T00:00:00.000Z",
-    updatedAt: "2026-11-06T02:00:00.000Z",
+    updatedAt: "2026-11-06T05:00:00.000Z",
     publishedAt: "2026-10-31T00:00:00.000Z"
   },
   {
@@ -543,7 +560,7 @@ Mulai versi v2.5.0, NightVerse menerapkan arsitektur *Instant Category Update* y
     content: `Setiap kreator memiliki kendali penuh atas visibilitas karya mereka. Karya dapat diatur berstatus **Public** (tampil di Explore Feed untuk umum) atau **Private** (hanya dapat dilihat oleh pemilik akun).`,
     coverImage: "https://images.unsplash.com/photo-1522202176988-66273c2fd55f?w=1200&auto=format&fit=crop&q=80",
     status: "PUBLISHED",
-    version: "v2.6.0",
+    version: "v2.7.0",
     authorId: "superadmin",
     authorName: "NightVerse Core Ops",
     authorRole: "SUPER_ADMIN",
@@ -554,7 +571,7 @@ Mulai versi v2.5.0, NightVerse menerapkan arsitektur *Instant Category Update* y
     callouts: [{ type: "info", title: "Kontrol Penuh", text: "Privasi karya Anda dijamin aman sesuai preferensi akun." }],
     tags: ["visibility", "engagement", "privacy", "social"],
     createdAt: "2026-11-01T00:00:00.000Z",
-    updatedAt: "2026-11-06T02:00:00.000Z",
+    updatedAt: "2026-11-06T05:00:00.000Z",
     publishedAt: "2026-11-01T00:00:00.000Z"
   },
   {
@@ -566,7 +583,7 @@ Mulai versi v2.5.0, NightVerse menerapkan arsitektur *Instant Category Update* y
     content: `Notification Center memberikan informasi instan mengenai aktivitas akun Anda, termasuk ketika pengguna lain mengikuti Anda, memberikan *like*, berkomentar, atau status persetujuan karya dari moderator.`,
     coverImage: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=1200&auto=format&fit=crop&q=80",
     status: "PUBLISHED",
-    version: "v2.6.0",
+    version: "v2.7.0",
     authorId: "superadmin",
     authorName: "NightVerse Core Ops",
     authorRole: "SUPER_ADMIN",
@@ -577,31 +594,36 @@ Mulai versi v2.5.0, NightVerse menerapkan arsitektur *Instant Category Update* y
     callouts: [{ type: "tip", title: "Pembaruan Instan", text: "Pemberitahuan muncul secara real-time tanpa perlu memuat ulang halaman." }],
     tags: ["notifications", "alerts", "realtime", "activity"],
     createdAt: "2026-11-02T00:00:00.000Z",
-    updatedAt: "2026-11-06T02:00:00.000Z",
+    updatedAt: "2026-11-06T05:00:00.000Z",
     publishedAt: "2026-11-02T00:00:00.000Z"
   },
   {
     id: "doc-system-settings-synchronization",
-    title: "Sinkronisasi Logo Terpusat & Creator Masterpieces Blur Effect",
-    slug: "sinkronisasi-logo-terpusat-blur-effect",
+    title: "System Settings & Global Media Policy",
+    slug: "system-settings-global-policy",
     categoryId: "system-settings",
-    summary: "Pengelolaan identitas visual terpusat, logo aplikasi, favicon, kebijakan persetujuan konten, dan kontrol blur global untuk Creator Masterpieces.",
-    content: `Melalui **System Settings** di Admin Workspace, Super Administrator dapat mengelola identitas global NightVerse secara terpusat, termasuk fitur baru **Creator Masterpieces Blur Effect** yang mengontrol efek blur pada karya di profil kreator.`,
+    summary: "Pengelolaan identitas visual, favicon, kebijakan persetujuan otomatis, dan kontrol blur global.",
+    content: `Melalui **System Settings**, Super Administrator dapat mengelola identitas global NightVerse. 
+
+### Fitur Pengaturan:
+- **Media Approval Policy**: Atur apakah Photo, Video, atau Blog memerlukan persetujuan manual ADMIN atau dipublikasikan secara otomatis.
+- **Creator Masterpieces Blur**: Aktifkan efek blur global pada kartu karya di seluruh profil kreator.
+- **Unified Logo & Favicon**: Update branding website dari satu panel pusat.`,
     coverImage: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1200&auto=format&fit=crop&q=80",
     status: "PUBLISHED",
-    version: "v2.6.0",
+    version: "v2.7.0",
     authorId: "superadmin",
     authorName: "NightVerse Core Ops",
     authorRole: "SUPER_ADMIN",
     displayOrder: 17,
     steps: [
       { stepNumber: 1, title: "Buka System Settings", description: "Akses menu pengaturan sistem di Admin Workspace." },
-      { stepNumber: 2, title: "Atur Creator Masterpieces Blur", description: "Pilih ON atau OFF pada toggle blur untuk mengontrol media visual di profil kreator." }
+      { stepNumber: 2, title: "Konfigurasi Policy", description: "Ubah kebijakan moderasi atau efek blur sesuai kebutuhan platform." }
     ],
     callouts: [{ type: "tip", title: "Real-time Sync", text: "Perubahan pengaturan langsung diterapkan secara global tanpa refresh." }],
-    tags: ["system-settings", "logo", "blur", "admin"],
+    tags: ["system-settings", "policy", "blur", "admin"],
     createdAt: "2026-11-03T16:00:00.000Z",
-    updatedAt: "2026-11-06T02:37:00.000Z",
+    updatedAt: "2026-11-06T05:00:00.000Z",
     publishedAt: "2026-11-03T16:00:00.000Z"
   },
   {
@@ -613,7 +635,7 @@ Mulai versi v2.5.0, NightVerse menerapkan arsitektur *Instant Category Update* y
     content: `NightVerse memprioritaskan keamanan data dan privasi pengguna. Seluruh aksi administratif dan moderasi tercatat secara transparan di dalam *Audit Center* untuk memastikan akuntabilitas platform.`,
     coverImage: "https://images.unsplash.com/photo-1563986768609-322da13575f3?w=1200&auto=format&fit=crop&q=80",
     status: "PUBLISHED",
-    version: "v2.6.0",
+    version: "v2.7.0",
     authorId: "superadmin",
     authorName: "NightVerse Core Ops",
     authorRole: "SUPER_ADMIN",
@@ -624,35 +646,95 @@ Mulai versi v2.5.0, NightVerse menerapkan arsitektur *Instant Category Update* y
     callouts: [{ type: "info", title: "Transparansi Penuh", text: "Setiap perubahan penting dilacak dengan cap waktu dan nama operator." }],
     tags: ["security", "audit", "privacy", "logs"],
     createdAt: "2026-11-04T00:00:00.000Z",
-    updatedAt: "2026-11-06T02:00:00.000Z",
+    updatedAt: "2026-11-06T05:00:00.000Z",
     publishedAt: "2026-11-04T00:00:00.000Z"
+  },
+  {
+    id: "doc-help-center-tickets",
+    title: "Help Center & Support Ticket System",
+    slug: "help-center-support-tickets",
+    categoryId: "help-center",
+    summary: "Panduan pengiriman tiket bantuan, pelacakan status dukungan, dan komunikasi dengan tim NightVerse.",
+    content: `Sistem **Support Ticket** di NightVerse v2.7.0 memungkinkan pengguna melaporkan masalah teknis, bug, atau pertanyaan terkait akun secara langsung ke tim administrasi.
+
+### Cara Kerja Tiket:
+- **Subjek & Kategori**: Pilih kategori yang sesuai (Account, Bug Report, Payment, dll).
+- **Prioritas**: Tentukan tingkat urgensi (Low, Medium, High, Urgent).
+- **Lampiran**: Sertakan gambar atau file pendukung untuk memperjelas masalah.
+- **Status Tiket**: Pantau status dari Open, In Progress, Waiting for User, hingga Resolved.`,
+    coverImage: "https://images.unsplash.com/photo-1486312338219-ce68d2c6f44d?w=1200&auto=format&fit=crop&q=80",
+    status: "PUBLISHED",
+    version: "v2.7.0",
+    authorId: "superadmin",
+    authorName: "NightVerse Core Ops",
+    authorRole: "SUPER_ADMIN",
+    displayOrder: 19,
+    steps: [
+      { stepNumber: 1, title: "Buka Help Center", description: "Pilih menu Help Center pada navigasi atau Profile Settings." },
+      { stepNumber: 2, title: "Contact Support", description: "Isi formulir tiket dan tekan Submit Ticket." },
+      { stepNumber: 3, title: "Pantau Tiket", description: "Cek riwayat tiket Anda untuk melihat balasan dari tim admin." }
+    ],
+    callouts: [{ type: "info", title: "Unique Ticket ID", text: "Setiap tiket memiliki ID unik untuk pelacakan yang akurat." }],
+    tags: ["help-center", "support", "tickets", "contact"],
+    createdAt: "2026-11-06T05:00:00.000Z",
+    updatedAt: "2026-11-06T05:00:00.000Z",
+    publishedAt: "2026-11-06T05:00:00.000Z"
   },
   {
     id: "doc-updates-changelog",
     title: "Updates & Changelog (Riwayat Perkembangan Platform)",
     slug: "updates-changelog-riwayat",
     categoryId: "updates-changelog",
-    summary: "Catatan rilis resmi dari versi v1.0.0 hingga rilis terbaru v2.6.0.",
+    summary: "Catatan rilis resmi dari versi v1.0.0 hingga rilis terbaru v2.7.0.",
     content: `Halaman ini mencatat seluruh pembaruan, peningkatan fitur, dan perbaikan bug yang telah dirilis oleh tim engineering NightVerse dari masa ke masa.`,
     coverImage: "https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=1200&auto=format&fit=crop&q=80",
     status: "PUBLISHED",
-    version: "v2.6.0",
+    version: "v2.7.0",
     authorId: "superadmin",
     authorName: "NightVerse Core Ops",
     authorRole: "SUPER_ADMIN",
-    displayOrder: 19,
+    displayOrder: 20,
     steps: [
       { stepNumber: 1, title: "Tinjau Changelog", description: "Buka dokumentasi Changelog untuk melihat detail fitur pada setiap versi." }
     ],
     callouts: [{ type: "tip", title: "Selalu Update", text: "Platform terus dikembangkan untuk menghadirkan pengalaman terbaik." }],
     tags: ["changelog", "updates", "releases", "version"],
     createdAt: "2026-11-05T00:00:00.000Z",
-    updatedAt: "2026-11-06T02:37:00.000Z",
+    updatedAt: "2026-11-06T05:00:00.000Z",
     publishedAt: "2026-11-05T00:00:00.000Z"
   }
 ];
 
 export const DEFAULT_CHANGELOGS: ChangelogRelease[] = [
+  {
+    id: "cl-v270",
+    versionNumber: "v2.7.0",
+    releaseTitle: "Support Ticket System & High-Fidelity Video Engine",
+    releaseDate: "2026-11-06",
+    summary: "Pembaruan besar skala sistem dengan integrasi Support Ticket System, Real Video Quality (H.264/AVC), dan Unified Creator Dashboard.",
+    newFeatures: [
+      "Support Ticket System: Pengguna kini dapat mengirimkan tiket bantuan (Account, Tech, Bug, dll) melalui Help Center.",
+      "Ticket Center Admin Submenu: Panel khusus di Admin Workspace untuk mengelola tiket dukungan dengan pelacakan status Open ➔ Resolved.",
+      "High-Fidelity Video Engine: Dukungan encoding H.264/AVC nyata dengan rendition multi-kualitas (144p hingga 1080p).",
+      "Unified Media Upload: Satu node upload tunggal untuk laptop dan mobile dengan deteksi perangkat otomatis.",
+      "Display Frame Protocol: Tiga metode penentuan thumbnail (Upload Image, Capture Frame from Video, Online URL).",
+      "Alphabetical Tags Registry: Seluruh tag kini otomatis terurut A-Z secara case-insensitive platform-wide."
+    ],
+    improvements: [
+      "Update dokumentasi resmi ke versi v2.7.0 untuk seluruh 20 kategori sistem.",
+      "Pemisahan buffer state untuk thumbnail foto dan video guna mencegah tumpang tindih data.",
+      "Integrasi About Application dengan status versi dokumentasi terbaru."
+    ],
+    bugFixes: [
+      "Memperbaiki masalah kompresi thumbnail yang menyebabkan hilangnya frame pada animasi GIF.",
+      "Mengatasi bug z-index pada tag autocomplete dropdown di dashboard."
+    ],
+    breakingChanges: [
+      "SourceType 'LAPTOP' dan 'MOBILE' kini dikonsolidasikan ke dalam 'UPLOAD' untuk kompatibilitas dashboard baru."
+    ],
+    createdBy: "Super Admin (NightVerse Core)",
+    createdAt: "2026-11-06T05:00:00.000Z"
+  },
   {
     id: "cl-v260",
     versionNumber: "v2.6.0",
