@@ -43,7 +43,7 @@ import { useAppState } from "../context/AppState.js";
 import { db } from "../lib/db.js";
 import { motion, AnimatePresence } from "motion/react";
 import { RoleBadge } from "./RoleBadge.js";
-import { BadgeDefinition, User, PrivacyLevel } from "../types.js";
+import { BadgeDefinition, User } from "../types.js";
 
 // Custom Platform Icons
 const DiscordIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
@@ -77,7 +77,8 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
   stagedProfileData,
   onApplyDraft
 }) => {
-  const { user: currentUser, triggerToast, toggleFollow, followActionCount, dbActionCount, navigateTo } = useAppState();
+  const { user: currentUser, triggerToast, toggleFollow, followActionCount, dbActionCount, navigateTo, systemSettings } = useAppState();
+  const isMasterpiecesBlur = systemSettings?.creatorMasterpiecesBlur ?? false;
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [profileUser, setProfileUser] = useState<User | null>(null);
@@ -87,7 +88,7 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
   const [selectedBadge, setSelectedBadge] = useState<BadgeDefinition | null>(null);
   const [showFollowersModal, setShowFollowersModal] = useState<"followers" | "following" | null>(null);
 
-  // Load and sync target user data from database
+  // Load target user data
   useEffect(() => {
     setIsLoading(true);
 
@@ -143,11 +144,11 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
     );
   };
 
-  // Direct Message Simulation
+  // Direct Message Handler
   const handleMessage = () => {
     if (!profileUser) return;
     triggerToast(
-      "Saluran Pesan Terbuka 💬",
+      "Pesan Langsung 💬",
       `Menghubungkan ke saluran pesan privat bersama @${profileUser.username}...`,
       "info"
     );
@@ -164,7 +165,6 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
     );
   };
 
-  // Loading State
   if (isLoading) {
     return (
       <div className="space-y-6 animate-pulse max-w-5xl mx-auto pb-16">
@@ -186,7 +186,6 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
     );
   }
 
-  // Not Found State
   if (!profileUser) {
     return (
       <div className="max-w-2xl mx-auto py-24 px-4 text-center space-y-6">
@@ -195,10 +194,10 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
         </div>
         <div className="space-y-2">
           <h2 className="text-2xl font-black font-space text-white tracking-tight">
-            Target Entity Not Found
+            Kreator Tidak Ditemukan
           </h2>
           <p className="text-xs text-slate-400 font-sans max-w-md mx-auto leading-relaxed">
-            Data kreator atau profil pengguna tidak ditemukan di dalam sistem NightVerse Registry. Akun mungkin telah dinonaktifkan atau ID tidak valid.
+            Data profil tidak ditemukan di sistem NightVerse. Akun mungkin telah dinonaktifkan atau ID tidak valid.
           </p>
         </div>
         {onBack && (
@@ -219,8 +218,9 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
     currentUser && (currentUser.id === profileUser.id || currentUser.role === "SUPER_ADMIN" || currentUser.role === "ADMIN")
   );
 
-  // If inside Profile Settings simulation, previewMode controls the visitor simulation
-  const isVisitor = isOwnerPreview ? previewMode === "visitor" : !isOwner;
+  // CRITICAL: When opened from Creator Directory (isOwnerPreview === false), ALWAYS use Visitor View!
+  // Owner View simulation is ONLY enabled inside Profile Settings when isOwnerPreview is explicitly true.
+  const isVisitor = isOwnerPreview ? previewMode === "visitor" : true;
 
   const profile = profileUser.profile || {};
   const privacy = profile.privacy || {
@@ -239,8 +239,8 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
     twoFactorEnabled: false
   };
 
-  // Profile Restricted Check (if whole profile is set to hidden)
-  if (privacy.profileVisible === false && !isOwner && !isOwnerPreview) {
+  // Whole Profile Restricted Check
+  if (privacy.profileVisible === false && isVisitor) {
     return (
       <div className="max-w-2xl mx-auto py-24 px-4 text-center space-y-6 animate-fadeIn">
         <div className="w-20 h-20 rounded-3xl bg-purple-950/30 border border-purple-500/30 flex items-center justify-center text-purple-400 mx-auto shadow-2xl">
@@ -248,10 +248,10 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
         </div>
         <div className="space-y-2">
           <h2 className="text-2xl font-black font-space text-white tracking-tight">
-            Neural Vault Restricted
+            Profil Dibatasi
           </h2>
           <p className="text-xs text-slate-400 font-sans max-w-md mx-auto leading-relaxed">
-            Kreator ini telah membatasi akses profil publik mereka. Anda tidak memiliki otorisasi privasi untuk menjelajahi profil ini.
+            Kreator ini membatasi visibilitas profil publik mereka.
           </p>
         </div>
         {onBack && (
@@ -271,16 +271,15 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
   const canSeeAvatar = !isVisitor || privacy.showAvatar !== "PRIVATE";
   const canSeeBanner = !isVisitor || privacy.showBanner !== "PRIVATE";
   const canSeeFullName = !isVisitor || privacy.showFullName !== "PRIVATE";
-  const canSeeEmail = !isVisitor || privacy.showEmail !== "PRIVATE";
+  const canSeeEmail = !isVisitor || (privacy.showEmail === "PUBLIC" || privacy.showEmail === true);
   const canSeePhone = !isVisitor || privacy.showPhone === "PUBLIC";
   const canSeeLocation = !isVisitor || privacy.showLocation !== "PRIVATE";
   const canSeeSocial = !isVisitor || privacy.showSocialLinks !== "PRIVATE";
   const canSeeInterests = !isVisitor || privacy.showInterests !== "PRIVATE";
-  const canSeeIdentity = !isVisitor || privacy.showIdentity === "PUBLIC";
   const canSeeActivity = !isVisitor || privacy.showActivity !== "PRIVATE";
   const canSeeActivityStatus = !isVisitor || privacy.showActivityStatus !== "PRIVATE";
 
-  // Badges logic - Only unlocked/earned badges are displayed on public profile
+  // Earned / unlocked badges list
   const allBadges = db.badges.getAll();
   const userBadgeNames = profile.badges || [];
 
@@ -295,7 +294,7 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
     return false;
   });
 
-  // Query user contents (filtered by privacy and approved status for visitors)
+  // Query user contents (strictly APPROVED & PUBLIC for visitors)
   const allUserBlogs = db.blogs.getAll().filter((b) => b.userId === profileUser.id);
   const allUserPhotos = db.photos.getAll().filter((p) => p.userId === profileUser.id);
   const allUserVideos = db.videos.getAll().filter((v) => v.userId === profileUser.id);
@@ -334,7 +333,7 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300 max-w-5xl mx-auto pb-16 px-4 md:px-0 select-none">
-      {/* Top Navigation & Controls Toolbar */}
+      {/* Top Navigation Bar */}
       <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-4 backdrop-blur-xl shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4 sticky top-4 z-30">
         <div className="flex items-center gap-3 w-full sm:w-auto">
           {onBack && (
@@ -350,20 +349,20 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-black font-space text-white uppercase tracking-wider">
-                Full Profile
+                Profil Kreator
               </span>
               <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-purple-950/60 text-purple-300 border border-purple-800/60">
                 @{profileUser.username}
               </span>
             </div>
             <p className="text-[11px] text-slate-400 font-sans hidden sm:block">
-              {isOwner ? "Tampilan profil publik kreator Anda" : `Menjelajahi profil lengkap @${profileUser.username}`}
+              Menjelajahi halaman profil publik @{profileUser.username}
             </p>
           </div>
         </div>
 
-        {/* View Mode Switcher if in Owner Simulation */}
         <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          {/* Owner Simulation Switcher - ONLY shown in Settings Preview */}
           {isOwnerPreview && (
             <div className="flex bg-slate-950 p-1 rounded-2xl border border-slate-800 text-xs font-space">
               <button
@@ -386,7 +385,7 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
                 }`}
               >
                 <Shield className="w-3.5 h-3.5 text-cyan-400" />
-                <span>My View (Owner)</span>
+                <span>Owner View</span>
               </button>
             </div>
           )}
@@ -413,7 +412,7 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
 
       {/* Main Profile Canvas Box */}
       <div className="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl relative">
-        {/* Cover Banner Area */}
+        {/* Cover Banner Area (Clean, no privacy status badges) */}
         <div className="h-44 sm:h-64 bg-slate-950 relative overflow-hidden group">
           {canSeeBanner && profile.bannerUrl ? (
             <img
@@ -424,23 +423,6 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
           ) : (
             <div className="w-full h-full bg-gradient-to-r from-purple-950 via-slate-900 to-indigo-950 flex flex-col items-center justify-center relative">
               <div className="absolute inset-0 bg-[radial-gradient(#8b5cf6_1px,transparent_1px)] [background-size:24px_24px] opacity-20"></div>
-              <Sparkles className="w-8 h-8 text-purple-400/30 mb-2 animate-pulse" />
-              <span className="text-[11px] font-mono font-bold text-slate-500 tracking-widest uppercase">
-                {!canSeeBanner ? "Cover Banner Disembunyikan (Privat)" : "NightVerse Cyber Frontier"}
-              </span>
-            </div>
-          )}
-
-          {/* Privacy Tag in Owner Mode */}
-          {!isVisitor && (
-            <div className="absolute top-4 right-4 z-10 flex items-center gap-2">
-              <span className={`px-2.5 py-1 rounded-full text-[9px] font-mono font-bold border backdrop-blur-md ${
-                privacy.showBanner === "PRIVATE"
-                  ? "bg-rose-950/80 text-rose-300 border-rose-500/40"
-                  : "bg-emerald-950/80 text-emerald-300 border-emerald-500/40"
-              }`}>
-                Banner: {privacy.showBanner === "PRIVATE" ? "🔒 Privat" : "🌐 Publik"}
-              </span>
             </div>
           )}
         </div>
@@ -448,7 +430,7 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
         {/* Profile Identity Bar */}
         <div className="px-6 sm:px-8 pb-6 relative -mt-16 sm:-mt-20 flex flex-col sm:flex-row items-center sm:items-end justify-between gap-6 border-b border-slate-800/80">
           <div className="flex flex-col sm:flex-row items-center sm:items-end gap-5 text-center sm:text-left">
-            {/* Avatar with Glow Ring */}
+            {/* Avatar */}
             <div className="relative group shrink-0">
               <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-3xl border-4 border-slate-900 bg-slate-950 overflow-hidden shadow-2xl relative">
                 {canSeeAvatar ? (
@@ -460,12 +442,10 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
                 ) : (
                   <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center text-slate-600">
                     <UserIcon className="w-12 h-12" />
-                    <span className="text-[9px] font-mono mt-1 text-slate-500">Avatar Privat</span>
                   </div>
                 )}
               </div>
 
-              {/* Active Status Dot */}
               {canSeeActivityStatus && (
                 <div
                   className="absolute bottom-2 right-2 w-5 h-5 bg-emerald-500 border-4 border-slate-900 rounded-full shadow-lg"
@@ -474,7 +454,7 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
               )}
             </div>
 
-            {/* Names & Signature Badges */}
+            {/* Names & Signature Badge */}
             <div className="space-y-1.5 pb-2">
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
                 <h1 className="text-2xl sm:text-3xl font-black font-space text-white tracking-tight">
@@ -507,15 +487,15 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
             </div>
           </div>
 
-          {/* Social Visitor Actions or Owner Quick Edit */}
+          {/* Visitor Action Buttons (Follow / Message / Share) */}
           <div className="flex items-center gap-3 shrink-0">
-            {currentUser && currentUser.id === profileUser.id ? (
+            {currentUser && currentUser.id === profileUser.id && !isOwnerPreview ? (
               <button
-                onClick={() => navigateTo("dashboard", "profile-settings")}
-                className="flex items-center gap-2 px-5 py-2.5 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/40 text-purple-300 rounded-2xl text-xs font-black font-space uppercase tracking-wider transition-all cursor-pointer"
+                onClick={handleShare}
+                className="flex items-center gap-2 px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-2xl text-xs font-bold font-space transition-colors cursor-pointer"
               >
-                <UserIcon className="w-4 h-4" />
-                <span>Edit Profile</span>
+                <Share2 className="w-4 h-4" />
+                <span>Bagikan Profil</span>
               </button>
             ) : (
               <>
@@ -542,7 +522,7 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
           </div>
         </div>
 
-        {/* Stats Metrics Row */}
+        {/* Public Metrics Row */}
         <div className="px-6 sm:px-8 py-4 bg-slate-950/50 border-b border-slate-800/80 flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap items-center gap-6 sm:gap-10 text-center sm:text-left">
             <div>
@@ -577,32 +557,31 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
           </div>
         </div>
 
-        {/* Two Column Layout: Details & Content Stream */}
+        {/* Content Layout */}
         <div className="p-6 sm:p-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column: Bio, Interests, Identity, Social Links */}
+          {/* Left Column: Bio, Badges, Interests, Social Links, Public Identity */}
           <div className="space-y-6">
             {/* Bio Box */}
             <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 space-y-3">
               <h3 className="text-xs font-mono font-bold text-purple-400 uppercase tracking-wider flex items-center gap-2">
                 <FileText className="w-3.5 h-3.5" />
-                <span>Bio & Narasi Kreator</span>
+                <span>Bio & Deskripsi</span>
               </h3>
               <p className="text-xs text-slate-300 font-sans leading-relaxed whitespace-pre-wrap">
                 {profile.bio || "Kreator ini belum menuliskan deskripsi bio profil."}
               </p>
             </div>
 
-            {/* Earned Badges Showcase */}
-            <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-mono font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
-                  <Award className="w-3.5 h-3.5" />
-                  <span>Koleksi Badge ({earnedBadges.length})</span>
-                </h3>
-                <span className="text-[9px] font-mono text-slate-500">Klik info</span>
-              </div>
+            {/* Badges Showcase */}
+            {earnedBadges.length > 0 && (
+              <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs font-mono font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+                    <Award className="w-3.5 h-3.5" />
+                    <span>Badge Koleksi ({earnedBadges.length})</span>
+                  </h3>
+                </div>
 
-              {earnedBadges.length > 0 ? (
                 <div className="flex flex-wrap gap-2">
                   {earnedBadges.map((badge) => (
                     <button
@@ -615,177 +594,117 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
                     </button>
                   ))}
                 </div>
-              ) : (
-                <p className="text-xs text-slate-500 font-sans">Belum ada badge yang disematkan.</p>
-              )}
-            </div>
+              </div>
+            )}
 
-            {/* Interests / Tags */}
-            <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between">
+            {/* Interests (Omitted if private or empty) */}
+            {canSeeInterests && profile.interests && profile.interests.length > 0 && (
+              <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 space-y-3">
                 <h3 className="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-2">
                   <Tag className="w-3.5 h-3.5" />
                   <span>Minat & Kategori</span>
                 </h3>
-                {!isVisitor && (
-                  <span className={`text-[9px] font-mono font-bold ${
-                    privacy.showInterests === "PRIVATE" ? "text-rose-400" : "text-emerald-400"
-                  }`}>
-                    {privacy.showInterests === "PRIVATE" ? "🔒 Privat" : "🌐 Publik"}
-                  </span>
-                )}
+
+                <div className="flex flex-wrap gap-1.5">
+                  {profile.interests.map((tag: string, idx: number) => (
+                    <span
+                      key={idx}
+                      className="px-2.5 py-1 bg-cyan-950/40 text-cyan-300 border border-cyan-900/60 rounded-xl text-[10px] font-mono font-bold"
+                    >
+                      #{tag}
+                    </span>
+                  ))}
+                </div>
               </div>
+            )}
 
-              {canSeeInterests ? (
-                profile.interests && profile.interests.length > 0 ? (
-                  <div className="flex flex-wrap gap-1.5">
-                    {profile.interests.map((tag: string, idx: number) => (
-                      <span
-                        key={idx}
-                        className="px-2.5 py-1 bg-cyan-950/40 text-cyan-300 border border-cyan-900/60 rounded-xl text-[10px] font-mono font-bold hover:bg-cyan-900/40 transition-colors"
-                      >
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-500 font-sans">Belum memilih topik minat.</p>
-                )
-              ) : (
-                <p className="text-xs text-slate-500 font-sans italic flex items-center gap-1.5">
-                  <Lock className="w-3.5 h-3.5 text-slate-600" />
-                  Daftar minat disetel ke privat oleh pemilik akun.
-                </p>
-              )}
-            </div>
-
-            {/* Social & External Links */}
-            <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between">
+            {/* Social Links (Omitted if private or empty) */}
+            {canSeeSocial && socialList.length > 0 && (
+              <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 space-y-3">
                 <h3 className="text-xs font-mono font-bold text-indigo-400 uppercase tracking-wider flex items-center gap-2">
                   <Globe className="w-3.5 h-3.5" />
                   <span>Tautan & Sosial</span>
                 </h3>
-                {!isVisitor && (
-                  <span className={`text-[9px] font-mono font-bold ${
-                    privacy.showSocialLinks === "PRIVATE" ? "text-rose-400" : "text-emerald-400"
-                  }`}>
-                    {privacy.showSocialLinks === "PRIVATE" ? "🔒 Privat" : "🌐 Publik"}
-                  </span>
-                )}
-              </div>
 
-              {canSeeSocial ? (
-                socialList.length > 0 ? (
-                  <div className="space-y-2">
-                    {socialList.map((item, idx) => {
-                      const Icon = item.icon;
-                      return (
-                        <div
-                          key={idx}
-                          className="flex items-center justify-between p-2.5 bg-slate-900/80 rounded-xl border border-slate-800/80 hover:border-slate-700 transition-colors"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <Icon className={`w-4 h-4 ${item.color} shrink-0`} />
-                            <span className="text-xs font-space font-bold text-slate-300 truncate">
-                              {item.prefix}{item.value}
-                            </span>
-                          </div>
-                          <ExternalLink className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                <div className="space-y-2">
+                  {socialList.map((item, idx) => {
+                    const Icon = item.icon;
+                    return (
+                      <a
+                        key={idx}
+                        href={item.value.startsWith("http") ? item.value : `https://${item.value}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between p-2.5 bg-slate-900/80 hover:bg-slate-800/80 rounded-xl border border-slate-800/80 hover:border-slate-700 transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <Icon className={`w-4 h-4 ${item.color} shrink-0`} />
+                          <span className="text-xs font-space font-bold text-slate-300 truncate">
+                            {item.prefix}{item.value}
+                          </span>
                         </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-500 font-sans">Belum menyertakan tautan sosial.</p>
-                )
-              ) : (
-                <p className="text-xs text-slate-500 font-sans italic flex items-center gap-1.5">
-                  <Lock className="w-3.5 h-3.5 text-slate-600" />
-                  Tautan sosial disetel ke privat.
-                </p>
-              )}
-            </div>
-
-            {/* Identity & Verification Card */}
-            <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 space-y-3">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Data Identitas & Verifikasi</span>
-                </h3>
-                {!isVisitor && (
-                  <span className={`text-[9px] font-mono font-bold ${
-                    privacy.showIdentity === "PUBLIC" ? "text-emerald-400" : "text-rose-400"
-                  }`}>
-                    {privacy.showIdentity === "PUBLIC" ? "🌐 Publik" : "🔒 Privat"}
-                  </span>
-                )}
-              </div>
-
-              <div className="space-y-2.5 text-xs font-sans">
-                {/* Email */}
-                {canSeeEmail ? (
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-500 flex items-center gap-1.5">
-                      <Mail className="w-3.5 h-3.5 text-slate-400" /> Email:
-                    </span>
-                    <span className="text-white font-mono text-[11px] truncate max-w-[160px]">{profileUser.email}</span>
-                  </div>
-                ) : !isVisitor ? (
-                  <div className="flex items-center justify-between opacity-60">
-                    <span className="text-slate-500 flex items-center gap-1.5">
-                      <Mail className="w-3.5 h-3.5" /> Email [Privat]:
-                    </span>
-                    <span className="text-slate-400 font-mono text-[11px]">{profileUser.email}</span>
-                  </div>
-                ) : null}
-
-                {/* Phone Number */}
-                {canSeePhone && profile.phoneNumber ? (
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-500 flex items-center gap-1.5">
-                      <Phone className="w-3.5 h-3.5 text-slate-400" /> Telepon:
-                    </span>
-                    <span className="text-white font-mono text-[11px]">{profile.phoneNumber}</span>
-                  </div>
-                ) : !isVisitor && profile.phoneNumber ? (
-                  <div className="flex items-center justify-between opacity-60">
-                    <span className="text-slate-500 flex items-center gap-1.5">
-                      <Phone className="w-3.5 h-3.5" /> Telepon [Privat]:
-                    </span>
-                    <span className="text-slate-400 font-mono text-[11px]">{profile.phoneNumber}</span>
-                  </div>
-                ) : null}
-
-                {/* Location */}
-                {canSeeLocation && profile.location && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-500 flex items-center gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-slate-400" /> Lokasi:
-                    </span>
-                    <span className="text-white">{profile.location}</span>
-                  </div>
-                )}
-
-                {/* Registration Date */}
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500 flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-slate-400" /> Terdaftar:
-                  </span>
-                  <span className="text-slate-300 font-mono text-[11px]">
-                    {new Date(profileUser.createdAt || Date.now()).toLocaleDateString("id-ID", {
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric"
-                    })}
-                  </span>
+                        <ExternalLink className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                      </a>
+                    );
+                  })}
                 </div>
               </div>
-            </div>
+            )}
+
+            {/* Public Identity Details (Omit private email/phone cleanly) */}
+            {(canSeeEmail || canSeePhone || (canSeeLocation && profile.location) || profileUser.createdAt) && (
+              <div className="bg-slate-950/60 border border-slate-800 rounded-2xl p-5 space-y-3">
+                <h3 className="text-xs font-mono font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Informasi Publik</span>
+                </h3>
+
+                <div className="space-y-2.5 text-xs font-sans">
+                  {canSeeEmail && profileUser.email && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 flex items-center gap-1.5">
+                        <Mail className="w-3.5 h-3.5 text-slate-400" /> Email:
+                      </span>
+                      <span className="text-white font-mono text-[11px] truncate max-w-[160px]">{profileUser.email}</span>
+                    </div>
+                  )}
+
+                  {canSeePhone && profile.phoneNumber && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 flex items-center gap-1.5">
+                        <Phone className="w-3.5 h-3.5 text-slate-400" /> Telepon:
+                      </span>
+                      <span className="text-white font-mono text-[11px]">{profile.phoneNumber}</span>
+                    </div>
+                  )}
+
+                  {canSeeLocation && profile.location && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-500 flex items-center gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400" /> Lokasi:
+                      </span>
+                      <span className="text-white">{profile.location}</span>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-slate-500 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-slate-400" /> Terdaftar:
+                    </span>
+                    <span className="text-slate-300 font-mono text-[11px]">
+                      {new Date(profileUser.createdAt || Date.now()).toLocaleDateString("id-ID", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric"
+                      })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Right Column: Works & Activity Stream Tabs */}
+          {/* Right Column: Works & Content Stream */}
           <div className="lg:col-span-2 space-y-6">
             {/* Tab Controls */}
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -814,23 +733,15 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
                   );
                 })}
               </div>
-
-              {!isVisitor && (
-                <span className={`text-[9px] font-mono font-bold ${
-                  privacy.showActivity === "PRIVATE" ? "text-rose-400" : "text-emerald-400"
-                }`}>
-                  Activity: {privacy.showActivity === "PRIVATE" ? "🔒 Privat" : "🌐 Publik"}
-                </span>
-              )}
             </div>
 
-            {/* Activity Stream View */}
+            {/* Stream View */}
             {!canSeeActivity ? (
               <div className="bg-slate-950/60 border border-slate-800 rounded-3xl p-12 text-center space-y-3">
                 <Lock className="w-10 h-10 text-purple-400/40 mx-auto" />
-                <h4 className="text-base font-black font-space text-white">Private Activity Vault</h4>
+                <h4 className="text-base font-black font-space text-white">Aktivitas Privat</h4>
                 <p className="text-xs text-slate-400 max-w-sm mx-auto font-sans leading-relaxed">
-                  Pengguna ini membatasi visibilitas aktivitas dan konten publik mereka kepada umum.
+                  Pengguna ini membatasi visibilitas aktivitas dan karya mereka dari pengunjung umum.
                 </p>
               </div>
             ) : totalWorks === 0 ? (
@@ -850,6 +761,16 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
                       key={b.id}
                       className="bg-slate-950/80 border border-slate-800/80 hover:border-purple-500/50 rounded-2xl overflow-hidden p-4 space-y-3 transition-all group"
                     >
+                      {b.thumbnailUrl && (
+                        <div className="h-32 bg-slate-900 overflow-hidden relative rounded-xl mb-2">
+                          <img
+                            src={b.thumbnailUrl}
+                            alt={b.title}
+                            className="w-full h-full object-cover transition-transform duration-500"
+                            style={{ filter: isMasterpiecesBlur ? "blur(12px)" : "none" }}
+                          />
+                        </div>
+                      )}
                       <div className="flex items-center justify-between">
                         <span className="px-2 py-0.5 bg-purple-950/60 text-purple-300 text-[10px] font-mono font-bold rounded-lg border border-purple-800/60">
                           Article
@@ -887,6 +808,7 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
                           src={p.url}
                           alt={p.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          style={{ filter: isMasterpiecesBlur ? "blur(12px)" : "none" }}
                         />
                         <div className="absolute top-2 left-2 px-2 py-0.5 bg-slate-950/80 backdrop-blur-md rounded-lg text-[9px] font-mono text-emerald-400 font-bold border border-emerald-900/60">
                           Photo
@@ -916,6 +838,7 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
                           src={v.thumbnailUrl || "https://images.unsplash.com/photo-1518770660439-4636190af475?w=500&auto=format&fit=crop&q=80"}
                           alt={v.title}
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                          style={{ filter: isMasterpiecesBlur ? "blur(12px)" : "none" }}
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 to-transparent flex items-end p-2.5">
                           <span className="text-[10px] font-mono text-cyan-300 font-bold">
@@ -1047,4 +970,5 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
     </div>
   );
 };
+
 export default FullProfileView;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { 
   User as UserIcon, 
   Settings, 
@@ -52,16 +52,32 @@ import {
   Briefcase,
   Layers,
   Image as ImageIcon,
-  Video as VideoIcon
+  Video as VideoIcon,
+  LifeBuoy,
+  Lightbulb,
+  MessageSquare,
+  Send,
+  Paperclip
 } from "lucide-react";
 import { useAppState } from "../context/AppState.js";
 import { db } from "../lib/db.js";
 import { motion, AnimatePresence } from "motion/react";
 import { RoleBadge, BadgeType } from "./RoleBadge.js";
-import { BadgeDefinition, UserBadgeAward, User, PrivacyLevel } from "../types.js";
+import { 
+  BadgeDefinition, 
+  UserBadgeAward, 
+  User, 
+  PrivacyLevel,
+  SupportTicket,
+  TicketMessage,
+  TicketCategory,
+  TicketPriority 
+} from "../types.js";
 import { FullProfileView } from "./FullProfileView.js";
+import { DocumentationCenter } from "./DocumentationCenter.js";
+import { DEFAULT_CHANGELOGS, DEFAULT_DOC_CATEGORIES } from "../lib/defaultDocs.js";
 
-type SettingsMenu = null | "preview" | "edit-profile" | "badges" | "faq" | "about";
+type SettingsMenu = null | "preview" | "edit-profile" | "badges" | "help-center" | "documentation" | "faq" | "about";
 
 // Custom Platform Icons
 const DiscordIcon: React.FC<{ className?: string }> = ({ className = "w-4 h-4" }) => (
@@ -113,18 +129,7 @@ export const ProfileSettings: React.FC = () => {
 
               {/* Quick Actions Header */}
               <div className="flex items-center gap-3">
-                <button
-                  onClick={() => {
-                    setStagedProfileData(null);
-                    setSelectedMenu("preview");
-                  }}
-                  className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600/20 to-indigo-600/20 hover:from-purple-600/30 hover:to-indigo-600/30 border border-purple-500/40 text-purple-300 hover:text-white rounded-2xl text-xs font-bold font-space transition-all shadow-lg shadow-purple-950/20 cursor-pointer active:scale-95"
-                >
-                  <Eye className="w-4 h-4 text-purple-400" />
-                  <span>Preview Profile</span>
-                </button>
-
-                <div className="hidden sm:flex items-center gap-3 pl-2 border-l border-slate-800">
+                <div className="flex items-center gap-3">
                   <img
                     src={user.profile?.avatarUrl || `https://api.dicebear.com/7.x/bottts/svg?seed=${user.username}`}
                     alt={user.username}
@@ -232,14 +237,69 @@ export const ProfileSettings: React.FC = () => {
 
               {/* Section 2: Informasi & Dukungan */}
               <div className="bg-slate-900/50 border border-slate-800/80 rounded-3xl overflow-hidden shadow-xl">
-                <div className="px-6 pt-5 pb-3 border-b border-slate-800/60 flex items-center gap-2">
+                <div className="px-6 pt-5 pb-3 border-b border-slate-800/60 flex items-center justify-between">
                   <span className="text-[10px] font-mono font-bold text-indigo-400 uppercase tracking-[0.2em]">
                     Informasi & Dukungan
+                  </span>
+                  <span className="text-[9px] font-mono text-slate-500 font-bold">
+                    Official NightVerse Center
                   </span>
                 </div>
 
                 <div className="divide-y divide-slate-800/40">
-                  {/* Item 3: FAQ */}
+                  {/* Item A: Help Center */}
+                  <button
+                    onClick={() => setSelectedMenu("help-center")}
+                    className="w-full px-6 py-4 flex items-center justify-between hover:bg-slate-850/80 transition-all cursor-pointer group text-left"
+                  >
+                    <div className="flex items-center gap-4 min-w-0 pr-4">
+                      <div className="w-10 h-10 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-center text-rose-400 group-hover:border-rose-500/50 group-hover:bg-rose-950/20 transition-all shrink-0">
+                        <LifeBuoy className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-bold text-white font-space group-hover:text-rose-300 transition-colors">
+                            Help Center
+                          </h3>
+                          <span className="px-2 py-0.2 rounded-full text-[8px] font-mono font-bold uppercase bg-rose-950/80 text-rose-300 border border-rose-900/80">
+                            Bantuan
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-400 truncate font-sans mt-0.5">
+                          Tempat menemukan bantuan cepat, panduan pemecahan masalah, dan dukungan teknis
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-rose-400 group-hover:translate-x-1 transition-all shrink-0" />
+                  </button>
+
+                  {/* Item B: Documentation */}
+                  <button
+                    onClick={() => setSelectedMenu("documentation")}
+                    className="w-full px-6 py-4 flex items-center justify-between hover:bg-slate-850/80 transition-all cursor-pointer group text-left"
+                  >
+                    <div className="flex items-center gap-4 min-w-0 pr-4">
+                      <div className="w-10 h-10 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-center text-purple-400 group-hover:border-purple-500/50 group-hover:bg-purple-950/20 transition-all shrink-0">
+                        <BookOpen className="w-5 h-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-bold text-white font-space group-hover:text-purple-300 transition-colors">
+                            Documentation
+                          </h3>
+                          <span className="px-2 py-0.2 rounded-full text-[8px] font-mono font-bold uppercase bg-purple-950/80 text-purple-300 border border-purple-900/80">
+                            Pusat Resmi
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-400 truncate font-sans mt-0.5">
+                          Pusat dokumentasi lengkap, panduan fitur, taksonomi, dan catatan rilis website
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-purple-400 group-hover:translate-x-1 transition-all shrink-0" />
+                  </button>
+
+                  {/* Item C: FAQ */}
                   <button
                     onClick={() => setSelectedMenu("faq")}
                     className="w-full px-6 py-4 flex items-center justify-between hover:bg-slate-850/80 transition-all cursor-pointer group text-left"
@@ -249,36 +309,46 @@ export const ProfileSettings: React.FC = () => {
                         <HelpCircle className="w-5 h-5" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <h3 className="text-sm font-bold text-white font-space group-hover:text-cyan-300 transition-colors">
-                          FAQ & Panduan
-                        </h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-bold text-white font-space group-hover:text-cyan-300 transition-colors">
+                            FAQ
+                          </h3>
+                          <span className="px-2 py-0.2 rounded-full text-[8px] font-mono font-bold uppercase bg-cyan-950/80 text-cyan-300 border border-cyan-900/80">
+                            Tanya Jawab
+                          </span>
+                        </div>
                         <p className="text-xs text-slate-400 truncate font-sans mt-0.5">
-                          Pertanyaan umum seputar fitur, leaderboard, privasi, dan aturan NightVerse
+                          Pertanyaan umum dan jawaban mengenai fitur, leaderboard, privasi, dan aturan NightVerse
                         </p>
                       </div>
                     </div>
                     <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-cyan-400 group-hover:translate-x-1 transition-all shrink-0" />
                   </button>
 
-                  {/* Item 4: About App */}
+                  {/* Item D: About Application */}
                   <button
                     onClick={() => setSelectedMenu("about")}
                     className="w-full px-6 py-4 flex items-center justify-between hover:bg-slate-850/80 transition-all cursor-pointer group text-left"
                   >
                     <div className="flex items-center gap-4 min-w-0 pr-4">
-                      <div className="w-10 h-10 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-center text-purple-400 group-hover:border-purple-500/50 group-hover:bg-purple-950/20 transition-all shrink-0">
+                      <div className="w-10 h-10 rounded-2xl bg-slate-950 border border-slate-800 flex items-center justify-center text-emerald-400 group-hover:border-emerald-500/50 group-hover:bg-emerald-950/20 transition-all shrink-0">
                         <Info className="w-5 h-5" />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <h3 className="text-sm font-bold text-white font-space group-hover:text-purple-300 transition-colors">
-                          About Application
-                        </h3>
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-sm font-bold text-white font-space group-hover:text-emerald-300 transition-colors">
+                            About Application
+                          </h3>
+                          <span className="px-2 py-0.2 rounded-full text-[8px] font-mono font-bold uppercase bg-emerald-950/80 text-emerald-300 border border-emerald-900/80">
+                            Aplikasi
+                          </span>
+                        </div>
                         <p className="text-xs text-slate-400 truncate font-sans mt-0.5">
-                          Versi aplikasi, pengembang, Syarat Layanan, dan Kebijakan Privasi
+                          Informasi resmi aplikasi, sinkronisasi logo, Syarat Layanan, dan Kebijakan Privasi
                         </p>
                       </div>
                     </div>
-                    <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-purple-400 group-hover:translate-x-1 transition-all shrink-0" />
+                    <ChevronRight className="w-5 h-5 text-slate-500 group-hover:text-emerald-400 group-hover:translate-x-1 transition-all shrink-0" />
                   </button>
                 </div>
               </div>
@@ -338,6 +408,8 @@ export const ProfileSettings: React.FC = () => {
                 {selectedMenu === "preview" && "Full Profile Preview"}
                 {selectedMenu === "edit-profile" && "Edit Profile"}
                 {selectedMenu === "badges" && "My Badge Center"}
+                {selectedMenu === "help-center" && "Help Center"}
+                {selectedMenu === "documentation" && "Documentation Center"}
                 {selectedMenu === "faq" && "FAQ & Panduan"}
                 {selectedMenu === "about" && "About NightVerse"}
               </h2>
@@ -371,14 +443,6 @@ export const ProfileSettings: React.FC = () => {
                   }
                   stagedProfileData={stagedProfileData}
                   isOwnerPreview={true}
-                  backLabel={stagedProfileData ? "Kembali Edit Profile" : "Kembali ke Pengaturan"}
-                  onBack={() => {
-                    if (stagedProfileData) {
-                      setSelectedMenu("edit-profile");
-                    } else {
-                      setSelectedMenu(null);
-                    }
-                  }}
                   onApplyDraft={() => {
                     if (!stagedProfileData) return;
                     db.users.update(user.id, {
@@ -405,8 +469,17 @@ export const ProfileSettings: React.FC = () => {
               )}
 
               {selectedMenu === "badges" && <BadgesPanel />}
+              {selectedMenu === "help-center" && (
+                <HelpCenterPanel 
+                  onOpenDocs={() => setSelectedMenu("documentation")} 
+                  onOpenFaq={() => setSelectedMenu("faq")} 
+                />
+              )}
+              {selectedMenu === "documentation" && (
+                <DocumentationCenter onBack={() => setSelectedMenu(null)} />
+              )}
               {selectedMenu === "faq" && <FAQPanel />}
-              {selectedMenu === "about" && <AboutAppPanel />}
+              {selectedMenu === "about" && <AboutAppPanel onOpenDocs={() => setSelectedMenu("documentation")} />}
             </div>
           </motion.div>
         )}
@@ -1692,6 +1765,530 @@ const BadgesPanel: React.FC = () => {
 };
 
 /* =========================================================================
+   3.5. HELP CENTER PANEL (With Ticket Center Integration)
+   ========================================================================= */
+interface HelpCenterPanelProps {
+  onOpenDocs: () => void;
+  onOpenFaq: () => void;
+}
+
+const HelpCenterPanel: React.FC<HelpCenterPanelProps> = ({ onOpenDocs, onOpenFaq }) => {
+  const { user, triggerToast } = useAppState();
+  const [supportCategory, setSupportCategory] = useState<TicketCategory>("Technical Issue");
+  const [supportPriority, setSupportPriority] = useState<TicketPriority>("Medium");
+  const [supportSubject, setSupportSubject] = useState("");
+  const [supportMessage, setSupportMessage] = useState("");
+  const [attachmentUrl, setAttachmentUrl] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [openTroubleshoot, setOpenTroubleshoot] = useState<number | null>(null);
+
+  // Active Ticket Conversation Modal state
+  const [activeTicket, setActiveTicket] = useState<SupportTicket | null>(null);
+  const [replyMessage, setReplyMessage] = useState("");
+  const [replyAttachment, setReplyAttachment] = useState("");
+  const [ticketSearch, setTicketSearch] = useState("");
+  const [ticketStatusFilter, setTicketStatusFilter] = useState<string>("ALL");
+
+  const myTickets = useMemo(() => {
+    if (!user) return [];
+    let list = db.supportTickets.getByUser(user.id);
+    if (ticketSearch) {
+      const q = ticketSearch.toLowerCase();
+      list = list.filter(t => t.subject.toLowerCase().includes(q) || t.ticketNumber.includes(q) || t.id.toLowerCase().includes(q));
+    }
+    if (ticketStatusFilter !== "ALL") {
+      list = list.filter(t => t.status === ticketStatusFilter);
+    }
+    return list;
+  }, [user, ticketSearch, ticketStatusFilter, db.supportTickets.getAll()]);
+
+  const troubleShoots = [
+    {
+      q: "Animasi GIF tidak bergerak atau macet?",
+      a: "Pastikan Anda mengunggah file asli dengan format .gif melalui formulir Create Work > tab Photo. NightVerse menerapkan kompresi bypass khusus untuk file GIF sehingga seluruh frame dan perulangan (looping) tetap dipertahankan."
+    },
+    {
+      q: "Bagaimana cara menyembunyikan data nomor telepon dan email dari publik?",
+      a: "Buka menu Edit Profile > tab Privasi & Visibilitas. Ubah saklar Nomor Telepon atau Email menjadi 'Privat'. Sistem Visitor View akan secara otomatis menyembunyikan informasi tersebut tanpa menampilkan tanda placeholder."
+    },
+    {
+      q: "Mengapa video tidak diputar secara otomatis di feed atau lightbox?",
+      a: "NightVerse menerapkan standar Non-Autoplay ketat demi kenyamanan pengguna dan efisiensi kuota. Video selalu dalam kondisi Pause saat dibuka. Tekan tombol Play besar di tengah video untuk memulai."
+    },
+    {
+      q: "Apa maksud simbol tanda tanya (?) pada tag di Tags Directory?",
+      a: "Simbol (?) menandakan status Ambiguous Tag, yaitu tag yang berpotensi memiliki arti ganda atau ambigu antar kategori (misalnya nama karakter yang identik dengan kata umum)."
+    }
+  ];
+
+  const handleSupportSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    if (!supportSubject.trim() || !supportMessage.trim()) {
+      triggerToast("Validasi Gagal", "Silakan isi subjek dan rincian pesan bantuan.", "error");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const created = db.supportTickets.add({
+        userId: user.id,
+        username: user.username,
+        subject: supportSubject.trim(),
+        category: supportCategory,
+        priority: supportPriority,
+        description: supportMessage.trim(),
+        attachmentUrl: attachmentUrl.trim() || undefined
+      });
+
+      triggerToast(
+        "Tiket Bantuan Berhasil Dikirim! 🎫",
+        `Tiket #${created.ticketNumber} (ID: ${created.id}) telah diterima oleh tim dukungan NightVerse.`,
+        "success"
+      );
+      setSupportSubject("");
+      setSupportMessage("");
+      setAttachmentUrl("");
+      setActiveTicket(created);
+    } catch (err) {
+      triggerToast("Gagal Mengirim", "Terjadi kesalahan saat menyimpan tiket.", "error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSendReply = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeTicket || !user || !replyMessage.trim()) return;
+
+    db.supportTickets.addMessage(
+      activeTicket.id,
+      user.id,
+      user.username,
+      user.role,
+      replyMessage.trim(),
+      replyAttachment.trim() || undefined
+    );
+
+    setReplyMessage("");
+    setReplyAttachment("");
+    setActiveTicket(db.supportTickets.getById(activeTicket.id));
+    triggerToast("Balasan Terkirim", "Pesan Anda telah ditambahkan ke riwayat tiket.", "success");
+  };
+
+  const handleReopenTicket = (ticketId: string) => {
+    db.supportTickets.updateStatus(ticketId, "IN_PROGRESS");
+    setActiveTicket(db.supportTickets.getById(ticketId));
+    triggerToast("Tiket Dibuka Kembali", "Tiket telah diubah statusnya menjadi In Progress.", "success");
+  };
+
+  return (
+    <div className="space-y-6 animate-in fade-in duration-300">
+      {/* Help Center Hero Card */}
+      <div className="p-6 bg-gradient-to-r from-rose-950/40 via-slate-900 to-purple-950/40 border border-slate-800 rounded-3xl relative overflow-hidden shadow-xl">
+        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-rose-950/80 border border-rose-800 text-rose-300 font-mono text-[10px] uppercase font-bold rounded-full">
+              <LifeBuoy className="w-3.5 h-3.5 text-rose-400" />
+              Pusat Dukungan & Ticket Center
+            </div>
+            <h2 className="text-xl md:text-2xl font-black font-space text-white">
+              Ada yang dapat kami bantu, @{user?.username}?
+            </h2>
+            <p className="text-xs text-slate-300 font-sans max-w-xl leading-relaxed">
+              Kirimkan tiket bantuan, pantau status tiket secara real-time, atau jelajahi dokumentasi dan FAQ resmi NightVerse.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+            <button
+              onClick={onOpenDocs}
+              className="flex items-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-2xl text-xs font-bold font-space uppercase tracking-wider transition-all shadow-lg shadow-purple-950/40 cursor-pointer"
+            >
+              <BookOpen className="w-4 h-4" />
+              <span>Buka Dokumentasi</span>
+            </button>
+            <button
+              onClick={onOpenFaq}
+              className="flex items-center gap-2 px-4 py-2.5 bg-slate-950 hover:bg-slate-850 text-cyan-300 rounded-2xl border border-cyan-800/60 text-xs font-bold font-space transition-colors cursor-pointer"
+            >
+              <HelpCircle className="w-4 h-4" />
+              <span>FAQ Resmi</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Action Support Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div 
+          onClick={onOpenDocs}
+          className="p-5 bg-slate-900/60 border border-slate-800 hover:border-purple-500/50 rounded-2xl space-y-2 cursor-pointer transition-all hover:-translate-y-0.5 group"
+        >
+          <div className="w-9 h-9 rounded-xl bg-purple-950/60 border border-purple-800 flex items-center justify-center text-purple-400 group-hover:scale-110 transition-transform">
+            <BookOpen className="w-4 h-4" />
+          </div>
+          <h3 className="text-xs font-bold font-space text-white group-hover:text-purple-300 transition-colors">
+            Documentation Center
+          </h3>
+          <p className="text-[11px] text-slate-400 font-sans leading-relaxed">
+            Panduan 19 kategori fitur, sistem taksonomi, dan changelog resmi.
+          </p>
+        </div>
+
+        <div 
+          onClick={onOpenFaq}
+          className="p-5 bg-slate-900/60 border border-slate-800 hover:border-cyan-500/50 rounded-2xl space-y-2 cursor-pointer transition-all hover:-translate-y-0.5 group"
+        >
+          <div className="w-9 h-9 rounded-xl bg-cyan-950/60 border border-cyan-800 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">
+            <HelpCircle className="w-4 h-4" />
+          </div>
+          <h3 className="text-xs font-bold font-space text-white group-hover:text-cyan-300 transition-colors">
+            FAQ & Tanya Jawab
+          </h3>
+          <p className="text-[11px] text-slate-400 font-sans leading-relaxed">
+            Solusi cepat untuk pertanyaan umum mengenai aturan dan leaderboard.
+          </p>
+        </div>
+
+        <div className="p-5 bg-slate-900/60 border border-slate-800 rounded-2xl space-y-2">
+          <div className="w-9 h-9 rounded-xl bg-emerald-950/60 border border-emerald-800 flex items-center justify-center text-emerald-400">
+            <CheckCircle2 className="w-4 h-4" />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <h3 className="text-xs font-bold font-space text-white">Status Sistem</h3>
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          </div>
+          <p className="text-[11px] text-slate-400 font-sans leading-relaxed">
+            Seluruh layanan API, IndexedDB, dan media server 100% online normal.
+          </p>
+        </div>
+
+        <div className="p-5 bg-slate-900/60 border border-slate-800 rounded-2xl space-y-2">
+          <div className="w-9 h-9 rounded-xl bg-amber-950/60 border border-amber-800 flex items-center justify-center text-amber-400">
+            <ShieldCheck className="w-4 h-4" />
+          </div>
+          <h3 className="text-xs font-bold font-space text-white">Keamanan Akun</h3>
+          <p className="text-[11px] text-slate-400 font-sans leading-relaxed">
+            Pengendalian privasi akun, enkripsi data, dan autentikasi peran.
+          </p>
+        </div>
+      </div>
+
+      {/* MY SUPPORT TICKETS SECTION */}
+      <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="w-5 h-5 text-purple-400" />
+            <div>
+              <h3 className="text-sm font-bold font-space text-white">Tiket Bantuan Saya (My Support Tickets)</h3>
+              <p className="text-xs text-slate-400 font-sans">Kelola dan lacak status tiket dukungan yang pernah Anda buat.</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+              <input
+                type="text"
+                placeholder="Cari tiket..."
+                value={ticketSearch}
+                onChange={(e) => setTicketSearch(e.target.value)}
+                className="bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500 w-40 sm:w-48"
+              />
+            </div>
+            <select
+              value={ticketStatusFilter}
+              onChange={(e) => setTicketStatusFilter(e.target.value)}
+              className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-300 font-mono"
+            >
+              <option value="ALL">Semua Status</option>
+              <option value="OPEN">Open</option>
+              <option value="IN_PROGRESS">In Progress</option>
+              <option value="WAITING_FOR_USER">Waiting for User</option>
+              <option value="RESOLVED">Resolved</option>
+              <option value="CLOSED">Closed</option>
+            </select>
+          </div>
+        </div>
+
+        {myTickets.length === 0 ? (
+          <div className="text-center py-12 text-slate-500 text-xs font-mono">
+            Belum ada tiket bantuan yang dibuat. Gunakan formulir di bawah untuk mengirimkan tiket baru.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {myTickets.map(ticket => {
+              const statusColors: Record<string, string> = {
+                OPEN: "bg-blue-950/40 text-blue-400 border-blue-900/50",
+                IN_PROGRESS: "bg-amber-950/40 text-amber-400 border-amber-900/50",
+                WAITING_FOR_USER: "bg-purple-950/40 text-purple-400 border-purple-900/50",
+                RESOLVED: "bg-emerald-950/40 text-emerald-400 border-emerald-900/50",
+                CLOSED: "bg-slate-950 text-slate-400 border-slate-800"
+              };
+              const priorityColors: Record<string, string> = {
+                Low: "text-slate-400 bg-slate-900",
+                Medium: "text-blue-400 bg-blue-950/30",
+                High: "text-amber-400 bg-amber-950/30",
+                Urgent: "text-rose-400 bg-rose-950/30 animate-pulse"
+              };
+              return (
+                <div 
+                  key={ticket.id} 
+                  onClick={() => setActiveTicket(ticket)}
+                  className="p-4 bg-slate-950/80 border border-slate-800 hover:border-purple-500/50 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 cursor-pointer transition-all hover:bg-slate-900/80"
+                >
+                  <div className="space-y-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[10px] font-mono font-bold text-purple-300 bg-purple-950/60 px-2 py-0.5 rounded border border-purple-900">
+                        #{ticket.id}
+                      </span>
+                      <span className={`text-[9px] font-mono font-bold uppercase px-2 py-0.5 rounded-full border ${statusColors[ticket.status] || "bg-slate-800 text-slate-300"}`}>
+                        {ticket.status.replace(/_/g, " ")}
+                      </span>
+                      <span className={`text-[9px] font-mono font-bold px-2 py-0.5 rounded border ${priorityColors[ticket.priority]}`}>
+                        {ticket.priority} Priority
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        {new Date(ticket.updatedAt).toLocaleString()}
+                      </span>
+                    </div>
+                    <h4 className="text-sm font-bold font-space text-white truncate">{ticket.subject}</h4>
+                    <p className="text-xs text-slate-400 line-clamp-1">{ticket.description}</p>
+                  </div>
+
+                  <div className="flex items-center gap-3 shrink-0">
+                    <span className="text-[10px] font-mono text-slate-400">
+                      Staff: {ticket.assignedStaffName || "Unassigned"}
+                    </span>
+                    <button className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold font-space transition-colors">
+                      Buka Percakapan
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* CONTACT SUPPORT TICKET FORM */}
+      <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-6 space-y-4">
+        <div className="flex items-center gap-2 pb-3 border-b border-slate-800">
+          <FileText className="w-4 h-4 text-purple-400" />
+          <div>
+            <h3 className="text-sm font-bold font-space text-white">Kirim Tiket Bantuan Baru (Contact Support)</h3>
+            <p className="text-xs text-slate-400 font-sans">
+              Isi formulir di bawah untuk membuat tiket dukungan resmi. Tim kami akan segera merespons.
+            </p>
+          </div>
+        </div>
+
+        <form onSubmit={handleSupportSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1">
+              <label className="text-[10px] font-mono font-bold text-slate-400 uppercase">Kategori Kendala</label>
+              <select
+                value={supportCategory}
+                onChange={(e) => setSupportCategory(e.target.value as TicketCategory)}
+                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono"
+              >
+                <option value="Account">Account</option>
+                <option value="Login">Login</option>
+                <option value="Profile">Profile</option>
+                <option value="Creator Dashboard">Creator Dashboard</option>
+                <option value="Content">Content</option>
+                <option value="Payment">Payment</option>
+                <option value="Technical Issue">Technical Issue</option>
+                <option value="Bug Report">Bug Report</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-[10px] font-mono font-bold text-slate-400 uppercase">Prioritas (Priority)</label>
+              <select
+                value={supportPriority}
+                onChange={(e) => setSupportPriority(e.target.value as TicketPriority)}
+                className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono"
+              >
+                <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
+                <option value="High">High</option>
+                <option value="Urgent">Urgent</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-mono font-bold text-slate-400 uppercase">Subjek Permasalahan *</label>
+            <input
+              type="text"
+              required
+              value={supportSubject}
+              onChange={(e) => setSupportSubject(e.target.value)}
+              placeholder="cth: Kendala saat mengunggah video berdurasi panjang di creator hub"
+              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-sans"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-mono font-bold text-slate-400 uppercase">Penjelasan Rinci / Deskripsi *</label>
+            <textarea
+              required
+              rows={4}
+              value={supportMessage}
+              onChange={(e) => setSupportMessage(e.target.value)}
+              placeholder="Jelaskan kronologi kendala, langkah yang telah dilakukan, atau pesan error yang muncul..."
+              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-sans"
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-[10px] font-mono font-bold text-slate-400 uppercase">Lampiran (Opsional URL Gambar/File)</label>
+            <input
+              type="url"
+              value={attachmentUrl}
+              onChange={(e) => setAttachmentUrl(e.target.value)}
+              placeholder="https://images.unsplash.com/... (atau tautan file pendukung)"
+              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white font-mono"
+            />
+          </div>
+
+          <div className="pt-2 flex justify-end">
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold font-space uppercase tracking-wider transition-all shadow-lg shadow-purple-950/40 cursor-pointer disabled:opacity-50 flex items-center gap-2"
+            >
+              <Send className="w-4 h-4" />
+              <span>{isSubmitting ? "Mengirim Tiket..." : "Submit Ticket"}</span>
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* TICKET CONVERSATION MODAL */}
+      <AnimatePresence>
+        {activeTicket && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-slate-900 border border-slate-800 rounded-3xl max-w-3xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+            >
+              {/* Header */}
+              <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-purple-500/20 text-purple-400 rounded-2xl border border-purple-500/30">
+                    <MessageSquare className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono font-bold text-purple-300">#{activeTicket.id}</span>
+                      <span className="px-2 py-0.5 bg-slate-800 text-slate-300 text-[10px] font-mono rounded uppercase font-bold">
+                        {activeTicket.status.replace(/_/g, " ")}
+                      </span>
+                    </div>
+                    <h3 className="text-sm font-bold font-space text-white mt-0.5">{activeTicket.subject}</h3>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setActiveTicket(null)}
+                  className="p-1.5 hover:bg-slate-800 rounded-xl text-slate-400 hover:text-white transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Ticket Details Bar */}
+              <div className="px-5 py-3 bg-slate-950/50 border-b border-slate-800/60 flex flex-wrap items-center justify-between gap-3 text-[11px] font-mono text-slate-400">
+                <span>Kategori: <strong className="text-white">{activeTicket.category}</strong></span>
+                <span>Prioritas: <strong className="text-white">{activeTicket.priority}</strong></span>
+                <span>Staff Ditugaskan: <strong className="text-emerald-400">{activeTicket.assignedStaffName || "Belum Ditugaskan"}</strong></span>
+                <span>Dibuat: <strong className="text-white">{new Date(activeTicket.createdAt).toLocaleString()}</strong></span>
+              </div>
+
+              {/* Messages Feed */}
+              <div className="flex-1 overflow-y-auto p-5 space-y-4 custom-scrollbar">
+                {db.supportTickets.getMessages(activeTicket.id).map((msg: TicketMessage) => {
+                  const isUser = msg.senderRole === "USER";
+                  return (
+                    <div key={msg.id} className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
+                      <div className="flex items-center gap-2 mb-1 px-1">
+                        <span className="text-[10px] font-mono font-bold text-slate-400">@{msg.senderName}</span>
+                        <span className={`text-[9px] px-1.5 py-0.2 rounded font-mono uppercase ${isUser ? "bg-purple-950/60 text-purple-400 border border-purple-900" : "bg-emerald-950/60 text-emerald-400 border border-emerald-900"}`}>
+                          {msg.senderRole}
+                        </span>
+                        <span className="text-[9px] text-slate-500 font-mono">{new Date(msg.createdAt).toLocaleTimeString()}</span>
+                      </div>
+                      
+                      <div className={`max-w-xl p-4 rounded-2xl text-xs font-sans leading-relaxed ${
+                        isUser 
+                          ? "bg-purple-600/20 border border-purple-500/30 text-slate-200 rounded-tr-none" 
+                          : "bg-slate-800 border border-slate-700 text-slate-100 rounded-tl-none"
+                      }`}>
+                        <p className="whitespace-pre-wrap">{msg.message}</p>
+                        {msg.attachmentUrl && (
+                          <div className="mt-3 pt-2 border-t border-slate-700/50">
+                            <a href={msg.attachmentUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-purple-300 hover:underline text-[11px] font-mono">
+                              <Paperclip className="w-3.5 h-3.5" />
+                              <span>Lihat Lampiran File</span>
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Reply Footer / Reopen Bar */}
+              <div className="p-4 border-t border-slate-800 bg-slate-950">
+                {activeTicket.status === "RESOLVED" || activeTicket.status === "CLOSED" ? (
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-900 p-3 rounded-2xl border border-slate-800">
+                    <span className="text-xs text-slate-400 font-sans">
+                      Tiket ini telah berstatus <strong>{activeTicket.status}</strong>. Jika kendala belum terselesaikan, Anda dapat membukanya kembali.
+                    </span>
+                    <button
+                      onClick={() => handleReopenTicket(activeTicket.id)}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold font-space uppercase cursor-pointer shrink-0"
+                    >
+                      Buka Kembali Tiket (Reopen)
+                    </button>
+                  </div>
+                ) : (
+                  <form onSubmit={handleSendReply} className="space-y-3">
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={replyMessage}
+                        onChange={(e) => setReplyMessage(e.target.value)}
+                        placeholder="Tulis balasan untuk tim dukungan..."
+                        className="flex-1 px-4 py-2.5 bg-slate-900 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-purple-500"
+                      />
+                      <button
+                        type="submit"
+                        disabled={!replyMessage.trim()}
+                        className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold font-space uppercase transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1.5 shrink-0"
+                      >
+                        <Send className="w-4 h-4" />
+                        <span>Kirim</span>
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+/* =========================================================================
    4. FAQ PANEL
    ========================================================================= */
 const FAQPanel: React.FC = () => {
@@ -1809,43 +2406,119 @@ const FAQPanel: React.FC = () => {
 };
 
 /* =========================================================================
-   5. ABOUT APP PANEL
+   5. ABOUT APP PANEL (Integrated with Documentation & Version v2.6.0)
    ========================================================================= */
-const AboutAppPanel: React.FC = () => {
+interface AboutAppPanelProps {
+  onOpenDocs: () => void;
+}
+
+const AboutAppPanel: React.FC<AboutAppPanelProps> = ({ onOpenDocs }) => {
+  const { systemSettings } = useAppState();
   const [openModal, setOpenModal] = useState<"tos" | "privacy" | null>(null);
+
+  const appTitle = systemSettings?.websiteName || systemSettings?.logoText || "NightVerse Platform";
+  const logoUrl = systemSettings?.logoUrl;
+  const logoTextAccent = systemSettings?.logoText?.substring(0, 2) || "NV";
+  const latestRelease = DEFAULT_CHANGELOGS[0] || {
+    versionNumber: "v2.6.0",
+    releaseTitle: "Creator Masterpieces Blur Effect & Global System Controls",
+    releaseDate: "2026-11-06",
+    summary: "Peluncuran fitur pengontrol global Creator Masterpieces Blur Effect di System Settings."
+  };
 
   return (
     <div className="space-y-6">
-      {/* App Main Specs */}
+      {/* App Main Specs & Version Integration */}
       <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-8 shadow-xl relative overflow-hidden text-center sm:text-left flex flex-col sm:flex-row items-center gap-6">
         <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-purple-600 to-indigo-500 p-0.5 shadow-2xl shrink-0">
-          <div className="w-full h-full bg-slate-950 rounded-[22px] flex items-center justify-center font-space font-black text-2xl text-transparent bg-clip-text bg-gradient-to-tr from-purple-400 to-indigo-300">
-            NV
+          <div className="w-full h-full bg-slate-950 rounded-[22px] flex items-center justify-center overflow-hidden p-1.5">
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt={appTitle}
+                className="w-full h-full object-contain rounded-[18px]"
+              />
+            ) : (
+              <span className="font-space font-black text-2xl text-transparent bg-clip-text bg-gradient-to-tr from-purple-400 to-indigo-300">
+                {logoTextAccent}
+              </span>
+            )}
           </div>
         </div>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
-            <h3 className="text-xl font-black font-space text-white">NightVerse Platform</h3>
-            <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-[10px] font-mono font-bold rounded-full border border-purple-500/30">
-              v2.5.0
+            <h3 className="text-xl font-black font-space text-white">{appTitle}</h3>
+            <span className="px-2.5 py-0.5 bg-purple-500/20 text-purple-400 text-[11px] font-mono font-bold rounded-full border border-purple-500/30">
+              {latestRelease.versionNumber}
             </span>
           </div>
           <p className="text-xs text-slate-300 font-sans leading-relaxed mb-3">
-            Ekosistem jejaring kreatif generasi terbaru yang mengintegrasikan publikasi artikel, portofolio foto, pemutar reels video, kustomisasi profil tingkat lanjut, serta sistem Leaderboard engagement aktual.
+            Ekosistem jejaring kreatif generasi terbaru yang terintegrasi penuh dengan Pusat Dokumentasi Resmi ({DEFAULT_DOC_CATEGORIES.length} Kategori Sistem), manajemen karya multimedia, dan kontrol sistem global.
           </p>
           <div className="flex flex-wrap justify-center sm:justify-start items-center gap-2">
             <span className="text-[10px] font-mono text-slate-400 bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-800">
-              Dev: NightVerse Core Team
+              Release: {latestRelease.releaseDate}
             </span>
             <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/40 px-2.5 py-1 rounded-xl border border-emerald-900/40 font-bold">
-              Engine: Active & Stable
+              Documentation: Fully Synchronized
             </span>
           </div>
         </div>
       </div>
 
-      {/* Info Cards Grid */}
+      {/* Direct Documentation Center Integration Card */}
+      <div className="bg-gradient-to-r from-purple-950/40 via-indigo-950/40 to-slate-900/60 border border-purple-500/30 rounded-3xl p-6 shadow-xl flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="flex items-center gap-4 text-center sm:text-left">
+          <div className="p-3.5 bg-purple-500/20 rounded-2xl border border-purple-500/40 text-purple-300 shrink-0">
+            <BookOpen className="w-7 h-7" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 justify-center sm:justify-start">
+              <h4 className="text-sm font-bold font-space text-white">Pusat Dokumentasi & Versi Resmi</h4>
+              <span className="px-2 py-0.5 bg-purple-500/20 text-purple-300 text-[9px] font-mono font-bold rounded-md">
+                {latestRelease.versionNumber} Active
+              </span>
+            </div>
+            <p className="text-xs text-slate-300 font-sans mt-1">
+              Akses panduan lengkap, changelog rilis, dan dokumentasi dari 19 kategori sistem NightVerse.
+            </p>
+          </div>
+        </div>
+        <button
+          onClick={onOpenDocs}
+          className="px-5 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-2xl text-xs font-bold font-space shadow-lg shadow-purple-900/40 transition-all cursor-pointer active:scale-95 shrink-0 flex items-center gap-2"
+        >
+          <Sparkles className="w-4 h-4" />
+          <span>Buka Dokumentasi</span>
+        </button>
+      </div>
+
+      {/* Latest Version Changelog Highlight */}
+      <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Layers className="w-5 h-5 text-purple-400" />
+            <h4 className="text-sm font-bold font-space text-white">Catatan Rilis Terbaru ({latestRelease.versionNumber})</h4>
+          </div>
+          <span className="text-[10px] font-mono text-slate-400">{latestRelease.releaseTitle}</span>
+        </div>
+        <p className="text-xs text-slate-300 font-sans leading-relaxed">
+          {latestRelease.summary}
+        </p>
+        <div className="pt-2 border-t border-slate-800/60 flex items-center justify-between text-[11px] text-slate-400 font-sans">
+          <span>Total Kategori Dokumentasi: <strong>{DEFAULT_DOC_CATEGORIES.length} Kategori</strong></span>
+          <button
+            onClick={onOpenDocs}
+            className="text-purple-400 hover:text-purple-300 font-bold flex items-center gap-1 cursor-pointer"
+          >
+            <span>Lihat Semua Changelog</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Info Cards Grid: TOS & Privacy Policy */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Card 1: Terms of Service */}
         <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 shadow-xl flex flex-col justify-between space-y-4">
@@ -1889,10 +2562,10 @@ const AboutAppPanel: React.FC = () => {
       {/* Copyright Footer Notice */}
       <div className="p-6 bg-slate-900/30 border border-slate-800/60 rounded-3xl text-center space-y-1">
         <p className="text-xs font-mono font-bold text-slate-400">
-          © 2026 NightVerse Platform. All rights reserved.
+          © 2026 NightVerse Platform ({latestRelease.versionNumber}). All rights reserved.
         </p>
         <p className="text-[10px] font-sans text-slate-500">
-          Dirancang untuk memberikan pengalaman kreasi dan jejaring kreatif tanpa hambatan.
+          Terintegrasi langsung dengan Pusat Dokumentasi Resmi dan Sistem Manajemen Versi.
         </p>
       </div>
 

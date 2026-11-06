@@ -275,6 +275,7 @@ export interface SystemSettings {
   enableEmailVerification: boolean;
   enablePushNotifications: boolean;
   enableRealtimeStream: boolean;
+  creatorMasterpiecesBlur: boolean;
   mediaApproval?: MediaApprovalSettings;
 }
 
@@ -284,3 +285,108 @@ export interface ToastAlert {
   message: string;
   type: "success" | "error" | "info";
 }
+
+export interface DocumentationCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  icon: string;
+  displayOrder: number;
+}
+
+export interface DocumentationStep {
+  stepNumber: number;
+  title: string;
+  description: string;
+}
+
+export interface DocumentationCallout {
+  type: "info" | "warning" | "tip";
+  title: string;
+  text: string;
+}
+
+export interface DocumentationArticle {
+  id: string;
+  title: string;
+  slug: string;
+  categoryId: string;
+  summary: string;
+  content: string;
+  coverImage?: string;
+  status: "DRAFT" | "PUBLISHED" | "ARCHIVED";
+  version: string;
+  authorId: string;
+  authorName: string;
+  authorRole?: string;
+  displayOrder: number;
+  steps?: DocumentationStep[];
+  callouts?: DocumentationCallout[];
+  tags?: string[];
+  createdAt: string;
+  updatedAt: string;
+  publishedAt?: string;
+}
+
+export interface DocumentationRevision {
+  id: string;
+  documentationId: string;
+  version: string;
+  previousContent: string;
+  updatedContent: string;
+  editorId: string;
+  editorName: string;
+  editorRole: string;
+  revisionNumber: number;
+  createdAt: string;
+  changeNote?: string;
+}
+
+export interface ChangelogRelease {
+  id: string;
+  versionNumber: string;
+  releaseTitle: string;
+  releaseDate: string;
+  summary?: string;
+  newFeatures: string[];
+  improvements: string[];
+  bugFixes: string[];
+  breakingChanges?: string[];
+  createdBy: string;
+  createdAt: string;
+}
+
+export type TicketCategory = "Account" | "Login" | "Profile" | "Creator Dashboard" | "Content" | "Payment" | "Technical Issue" | "Bug Report" | "Other";
+export type TicketPriority = "Low" | "Medium" | "High" | "Urgent";
+export type TicketStatus = "OPEN" | "IN_PROGRESS" | "WAITING_FOR_USER" | "RESOLVED" | "CLOSED";
+
+export interface SupportTicket {
+  id: string;
+  ticketNumber: string;
+  userId: string;
+  username: string;
+  subject: string;
+  category: TicketCategory;
+  priority: TicketPriority;
+  description: string;
+  attachmentUrl?: string;
+  status: TicketStatus;
+  assignedStaffId?: string;
+  assignedStaffName?: string;
+  createdAt: string;
+  updatedAt: string;
+  resolvedAt?: string;
+}
+
+export interface TicketMessage {
+  id: string;
+  ticketId: string;
+  senderId: string;
+  senderName: string;
+  senderRole: Role;
+  message: string;
+  attachmentUrl?: string;
+  createdAt: string;
+}
+

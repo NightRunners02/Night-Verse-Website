@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { X, Heart, MessageSquare, CornerDownRight, Check, UserPlus, Eye, Clock, Monitor, AlertTriangle, RefreshCw, Globe, Plus, Star, Bookmark, Share2, Link, Download, MoreHorizontal, ChevronLeft, ChevronRight, Maximize2, Minimize2, Info, Users, Play, Pause, Volume2, VolumeX, Settings, SquareStack, SkipForward, SkipBack, Flag, Layers, Lock, Unlock, MessageSquareOff } from "lucide-react";
+import { X, Heart, MessageSquare, CornerDownRight, Check, UserPlus, Eye, Clock, Monitor, AlertTriangle, RefreshCw, Globe, Plus, Star, Bookmark, Share2, Link, Download, MoreHorizontal, ChevronLeft, ChevronRight, Maximize2, Minimize2, Info, Users, Play, Pause, Volume2, VolumeX, Settings, SquareStack, SkipForward, SkipBack, Flag, Layers, Lock, Unlock, MessageSquareOff, RotateCcw, RotateCw } from "lucide-react";
 import { useAppState } from "../context/AppState.js";
 import { motion, AnimatePresence } from "motion/react";
 import { db } from "../lib/db.js";
@@ -53,6 +53,7 @@ export const ContentLightbox: React.FC = () => {
   
   // Video control states
   const videoRef = useRef<HTMLVideoElement>(null);
+  const videoContainerRef = useRef<HTMLDivElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [activeEmbedIndex, setActiveEmbedIndex] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -63,6 +64,12 @@ export const ContentLightbox: React.FC = () => {
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [showControls, setShowControls] = useState(true);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Video settings & quality states
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
+  const [settingsSubmenu, setSettingsSubmenu] = useState<"main" | "speed" | "quality">("main");
+  const [selectedQuality, setSelectedQuality] = useState<string>("Auto");
+  const [sourceVideoHeight, setSourceVideoHeight] = useState<number>(1080);
 
   // Detect mobile viewport
   useEffect(() => {
@@ -206,12 +213,17 @@ export const ContentLightbox: React.FC = () => {
     if (!focusedContent) return;
     const { type, item } = focusedContent;
     
-    // Reset report flows upon focus changes
+    // Reset report flows & video states upon focus changes
     setActiveEmbedIndex(0);
     setIsReporting(false);
     setReportReason("");
     setReportNotes("");
     setShowAllTags(false);
+    setIsPlaying(false);
+    setShowSettingsMenu(false);
+    setSettingsSubmenu("main");
+    setProgress(0);
+    setCurrentTime(0);
 
     // Update views in Registry and fetch updated object
     let freshItem = item;
@@ -872,13 +884,19 @@ export const ContentLightbox: React.FC = () => {
       const current = videoRef.current.currentTime;
       const dur = videoRef.current.duration;
       setCurrentTime(current);
-      setProgress((current / dur) * 100);
+      if (dur > 0) {
+        setProgress((current / dur) * 100);
+      }
     }
   };
 
   const handleLoadedMetadata = () => {
     if (videoRef.current) {
-      setDuration(videoRef.current.duration);
+      const dur = videoRef.current.duration || 0;
+      const h = videoRef.current.videoHeight || 1080;
+      setDuration(dur);
+      setSourceVideoHeight(h);
+      videoRef.current.playbackRate = playbackSpeed;
     }
     if (focusedContent?.type === "video") {
       handleVideoMetadata({ currentTarget: videoRef.current } as any);
@@ -890,6 +908,28 @@ export const ContentLightbox: React.FC = () => {
       const seekTime = (Number(e.target.value) / 100) * duration;
       videoRef.current.currentTime = seekTime;
       setProgress(Number(e.target.value));
+      resetControlsTimer();
+    }
+  };
+
+  const skipBack10 = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (videoRef.current) {
+      const newTime = Math.max(0, videoRef.current.currentTime - 10);
+      videoRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
+      if (duration > 0) setProgress((newTime / duration) * 100);
+      resetControlsTimer();
+    }
+  };
+
+  const skipForward10 = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (videoRef.current) {
+      const newTime = Math.min(duration, videoRef.current.currentTime + 10);
+      videoRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
+      if (duration > 0) setProgress((newTime / duration) * 100);
       resetControlsTimer();
     }
   };
@@ -913,14 +953,58 @@ export const ContentLightbox: React.FC = () => {
     resetControlsTimer();
   };
 
-  const changePlaybackSpeed = () => {
-    const speeds = [0.5, 1, 1.25, 1.5, 2];
-    const currentIndex = speeds.indexOf(playbackSpeed);
-    const nextIndex = (currentIndex + 1) % speeds.length;
-    const nextSpeed = speeds[nextIndex];
-    setPlaybackSpeed(nextSpeed);
+  const speedOptions = [
+    { label: "0.5x", value: 0.5 },
+    { label: "0.75x", value: 0.75 },
+    { label: "Normal (1.0x)", value: 1.0 },
+    { label: "1.25x", value: 1.25 },
+    { label: "1.5x", value: 1.5 },
+    { label: "1.75x", value: 1.75 },
+    { label: "2.0x", value: 2.0 },
+  ];
+
+  const handleSelectSpeed = (val: number) => {
+    setPlaybackSpeed(val);
     if (videoRef.current) {
-      videoRef.current.playbackRate = nextSpeed;
+      videoRef.current.playbackRate = val;
+    }
+    setShowSettingsMenu(false);
+    setSettingsSubmenu("main");
+  };
+
+  const allQualities = [
+    { label: "Auto", height: 9999 },
+    { label: "1080p", height: 1080 },
+    { label: "720p", height: 720 },
+    { label: "480p", height: 480 },
+    { label: "360p", height: 360 },
+    { label: "240p", height: 240 },
+    { label: "144p", height: 144 },
+  ];
+
+  const availableQualities = allQualities.filter(
+    (q) => q.label === "Auto" || q.height <= (sourceVideoHeight || 1080)
+  );
+
+  const handleSelectQuality = (label: string) => {
+    setSelectedQuality(label);
+    setShowSettingsMenu(false);
+    setSettingsSubmenu("main");
+    triggerToast("Kualitas Video ⚙️", `Pengaturan kualitas disetel ke ${label}`, "info");
+  };
+
+  const toggleFullscreen = async () => {
+    if (!videoContainerRef.current) return;
+    try {
+      if (!document.fullscreenElement) {
+        await videoContainerRef.current.requestFullscreen();
+        setIsFullscreen(true);
+      } else {
+        await document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    } catch (error) {
+      console.error("Fullscreen failed", error);
     }
     resetControlsTimer();
   };
@@ -949,13 +1033,14 @@ export const ContentLightbox: React.FC = () => {
       if (isPlaying) {
         setShowControls(false);
       }
-    }, 3000);
+    }, 3500);
   };
 
   const formatTime = (time: number) => {
+    if (!time || isNaN(time)) return "00:00";
     const minutes = Math.floor(time / 60);
     const seconds = Math.floor(time % 60);
-    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+    return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
   };
 
   const handleMediaTouch = () => {
@@ -1206,11 +1291,16 @@ export const ContentLightbox: React.FC = () => {
         );
       } else {
         return (
-          <div className="relative w-full h-full bg-black flex items-center justify-center group" onClick={handleMediaTouch}>
+          <div 
+            ref={videoContainerRef}
+            className="relative w-full h-full bg-slate-950 flex items-center justify-center group overflow-hidden select-none" 
+            onClick={handleMediaTouch}
+            onMouseMove={resetControlsTimer}
+          >
             <video 
               ref={videoRef}
-              src={item.url || undefined} 
-              autoPlay 
+              src={currentUrl || undefined} 
+              autoPlay={false} 
               loop={!isMobile}
               onTimeUpdate={handleTimeUpdate}
               onLoadedMetadata={handleLoadedMetadata}
@@ -1221,78 +1311,267 @@ export const ContentLightbox: React.FC = () => {
               playsInline
             />
 
-            {/* Custom Mobile Video Controls Overlay */}
+            {/* Central Play Overlay Button (Non-Autoplay default state) */}
+            {!isPlaying && (
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                onClick={(e) => { e.stopPropagation(); togglePlay(); }}
+                className="absolute inset-0 z-30 flex items-center justify-center bg-black/40 backdrop-blur-[2px] cursor-pointer transition-all duration-300"
+              >
+                <button 
+                  type="button"
+                  className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-purple-600/90 hover:bg-purple-500 border-2 border-purple-400/50 flex items-center justify-center text-white shadow-2xl shadow-purple-900/80 transform hover:scale-110 active:scale-95 transition-all duration-200 group/playbtn cursor-pointer"
+                  title="Putar Video"
+                >
+                  <Play className="w-10 h-10 sm:w-12 sm:h-12 fill-current ml-1 text-white drop-shadow-md group-hover/playbtn:scale-110 transition-transform" />
+                </button>
+              </motion.div>
+            )}
+
+            {/* Mobile Top Controls Bar */}
             {isMobile && (
-              <AnimatePresence>
-                {showControls && (
-                  <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    exit={{ opacity: 0 }}
-                    className="absolute inset-0 bg-black/40 flex flex-col justify-between p-4 z-40 pointer-events-none"
-                  >
-                    <div className="flex justify-between items-start pointer-events-auto">
-                      <button onClick={() => setFocusedContent(null)} className="p-2 bg-black/20 backdrop-blur-md rounded-full text-white border border-white/10">
-                        <ChevronLeft className="w-6 h-6" />
-                      </button>
-                      <div className="flex gap-2">
-                        <button onClick={togglePiP} className="p-2 bg-black/20 backdrop-blur-md rounded-full text-white border border-white/10">
-                          <SquareStack className="w-5 h-5" />
-                        </button>
-                        <button onClick={changePlaybackSpeed} className="px-3 py-1 bg-black/20 backdrop-blur-md rounded-full text-white border border-white/10 text-[10px] font-bold">
-                          {playbackSpeed}x
-                        </button>
-                      </div>
-                    </div>
+              <div className="absolute top-4 left-4 z-40 pointer-events-auto flex items-center gap-2">
+                <button 
+                  onClick={() => setFocusedContent(null)} 
+                  className="p-2.5 bg-slate-900/70 hover:bg-slate-800 backdrop-blur-md rounded-full text-white border border-white/10 shadow-lg active:scale-95 transition-all"
+                  title="Tutup"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+              </div>
+            )}
 
-                    <div className="flex items-center justify-center pointer-events-auto">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); togglePlay(); }} 
-                        className="w-16 h-16 bg-purple-600/80 backdrop-blur-sm rounded-full flex items-center justify-center text-white shadow-2xl active:scale-90 transition-transform"
+            {/* Settings Popover System (Positioned above Gear Icon) */}
+            <AnimatePresence>
+              {showSettingsMenu && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  transition={{ duration: 0.15 }}
+                  className="absolute bottom-20 right-4 sm:right-6 z-50 w-64 bg-slate-900/95 border border-purple-500/30 rounded-2xl shadow-2xl backdrop-blur-xl p-3 text-white font-sans text-xs"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {settingsSubmenu === "main" && (
+                    <div className="space-y-1">
+                      <div className="px-3 py-2 border-b border-slate-800 text-[10px] font-mono font-bold uppercase tracking-wider text-purple-400 flex items-center justify-between">
+                        <span>Pengaturan Pemutaran</span>
+                        <Settings className="w-3.5 h-3.5 text-purple-400" />
+                      </div>
+                      <button
+                        onClick={() => setSettingsSubmenu("speed")}
+                        className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-purple-600/20 text-slate-200 hover:text-white transition-colors text-left"
                       >
-                        {isPlaying ? <Pause className="w-8 h-8 fill-current" /> : <Play className="w-8 h-8 fill-current ml-1" />}
+                        <span className="font-semibold">Kecepatan Pemutaran</span>
+                        <span className="text-[10px] font-mono text-purple-400 flex items-center gap-1">
+                          {playbackSpeed === 1 ? "Normal" : `${playbackSpeed}x`}
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => setSettingsSubmenu("quality")}
+                        className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-purple-600/20 text-slate-200 hover:text-white transition-colors text-left"
+                      >
+                        <span className="font-semibold">Kualitas Video</span>
+                        <span className="text-[10px] font-mono text-cyan-400 flex items-center gap-1">
+                          {selectedQuality}
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                        </span>
                       </button>
                     </div>
+                  )}
 
-                    <div className="space-y-3 pointer-events-auto">
-                      <div className="flex items-center justify-between text-[10px] text-white font-mono font-bold px-1">
-                        <span>{formatTime(currentTime)}</span>
-                        <span>{formatTime(duration)}</span>
+                  {settingsSubmenu === "speed" && (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 px-2 py-1.5 border-b border-slate-800">
+                        <button
+                          onClick={() => setSettingsSubmenu("main")}
+                          className="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <span className="text-xs font-bold text-white font-space">Kecepatan Pemutaran</span>
                       </div>
-                      <div className="relative group/progress">
+                      <div className="max-h-48 overflow-y-auto custom-scrollbar pt-1 space-y-0.5">
+                        {speedOptions.map((opt) => (
+                          <button
+                            key={opt.value}
+                            onClick={() => handleSelectSpeed(opt.value)}
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-colors ${
+                              playbackSpeed === opt.value
+                                ? "bg-purple-600/30 text-purple-300 font-bold border border-purple-500/30"
+                                : "hover:bg-slate-800 text-slate-300"
+                            }`}
+                          >
+                            <span>{opt.label}</span>
+                            {playbackSpeed === opt.value && <Check className="w-4 h-4 text-purple-400" />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {settingsSubmenu === "quality" && (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 px-2 py-1.5 border-b border-slate-800">
+                        <button
+                          onClick={() => setSettingsSubmenu("main")}
+                          className="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"
+                        >
+                          <ChevronLeft className="w-4 h-4" />
+                        </button>
+                        <span className="text-xs font-bold text-white font-space">Kualitas Video</span>
+                      </div>
+                      <div className="max-h-48 overflow-y-auto custom-scrollbar pt-1 space-y-0.5">
+                        {availableQualities.map((q) => (
+                          <button
+                            key={q.label}
+                            onClick={() => handleSelectQuality(q.label)}
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-colors ${
+                              selectedQuality === q.label
+                                ? "bg-cyan-600/30 text-cyan-300 font-bold border border-cyan-500/30"
+                                : "hover:bg-slate-800 text-slate-300"
+                            }`}
+                          >
+                            <span className="flex items-center gap-2">
+                              {q.label}
+                              {q.height !== 9999 && sourceVideoHeight && q.height === sourceVideoHeight && (
+                                <span className="text-[8px] font-mono px-1.5 py-0.2 rounded bg-purple-950 text-purple-400 border border-purple-800">
+                                  Sumber Original
+                                </span>
+                              )}
+                            </span>
+                            {selectedQuality === q.label && <Check className="w-4 h-4 text-cyan-400" />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Main Video Controls Bar */}
+            <AnimatePresence>
+              {(showControls || !isPlaying) && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 20 }}
+                  transition={{ duration: 0.2 }}
+                  className="absolute bottom-0 left-0 right-0 p-3 sm:p-5 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent z-40 space-y-2 pointer-events-auto"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Progress Scrubber Slider */}
+                  <div className="relative flex items-center group/scrubber cursor-pointer py-1">
+                    <input 
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="0.1"
+                      value={progress}
+                      onChange={handleSeek}
+                      className="w-full h-1.5 hover:h-2 bg-slate-800/80 rounded-full appearance-none cursor-pointer accent-purple-500 transition-all z-10"
+                    />
+                    <div 
+                      className="absolute left-0 h-1.5 rounded-full bg-gradient-to-r from-purple-600 to-cyan-400 pointer-events-none group-hover/scrubber:h-2 transition-all"
+                      style={{ width: `${progress}%` }}
+                    />
+                  </div>
+
+                  {/* Main Control Buttons Row */}
+                  <div className="flex items-center justify-between gap-2 sm:gap-4">
+                    {/* Left Actions: Play/Pause, Skip -10s, Skip +10s, Volume, Time */}
+                    <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                      <button 
+                        onClick={togglePlay} 
+                        className="p-2 sm:p-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl shadow-lg shadow-purple-950/40 active:scale-90 transition-all cursor-pointer shrink-0"
+                        title={isPlaying ? "Jeda (Pause)" : "Putar (Play)"}
+                      >
+                        {isPlaying ? <Pause className="w-4 h-4 sm:w-5 sm:h-5 fill-current" /> : <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current ml-0.5" />}
+                      </button>
+
+                      <button 
+                        onClick={skipBack10}
+                        className="p-2 bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl border border-slate-800 flex items-center gap-1 active:scale-95 transition-all cursor-pointer shrink-0"
+                        title="Mundur 10 Detik"
+                      >
+                        <RotateCcw className="w-4 h-4 text-purple-400" />
+                        <span className="text-[10px] font-mono font-bold hidden sm:inline">-10s</span>
+                      </button>
+
+                      <button 
+                        onClick={skipForward10}
+                        className="p-2 bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-white rounded-xl border border-slate-800 flex items-center gap-1 active:scale-95 transition-all cursor-pointer shrink-0"
+                        title="Maju 10 Detik"
+                      >
+                        <RotateCw className="w-4 h-4 text-cyan-400" />
+                        <span className="text-[10px] font-mono font-bold hidden sm:inline">+10s</span>
+                      </button>
+
+                      {/* Volume Slider & Toggle */}
+                      <div className="hidden sm:flex items-center gap-2 group/vol bg-slate-900/60 border border-slate-800/80 rounded-xl px-2.5 py-1.5">
+                        <button onClick={toggleMute} className="text-slate-400 hover:text-white transition-colors">
+                          {isMuted || volume === 0 ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-purple-400" />}
+                        </button>
                         <input 
                           type="range"
                           min="0"
-                          max="100"
-                          value={progress}
-                          onChange={handleSeek}
-                          className="w-full h-1.5 bg-white/20 rounded-full appearance-none cursor-pointer accent-purple-500"
+                          max="1"
+                          step="0.05"
+                          value={isMuted ? 0 : volume}
+                          onChange={handleVolumeChange}
+                          className="w-16 h-1 bg-slate-700 rounded-full appearance-none cursor-pointer accent-purple-400"
                         />
                       </div>
-                      <div className="flex items-center justify-between">
-                         <div className="flex items-center gap-3">
-                            <button onClick={toggleMute} className="text-white">
-                              {isMuted || volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
-                            </button>
-                            <input 
-                              type="range"
-                              min="0"
-                              max="1"
-                              step="0.1"
-                              value={isMuted ? 0 : volume}
-                              onChange={handleVolumeChange}
-                              className="w-20 h-1 bg-white/20 rounded-full appearance-none accent-white"
-                            />
-                         </div>
-                         <button onClick={() => setIsFullscreen(!isFullscreen)} className="text-white">
-                            <Maximize2 className="w-5 h-5" />
-                         </button>
+
+                      {/* Time Readout */}
+                      <div className="text-[11px] font-mono font-bold text-slate-300 tracking-tight shrink-0 bg-slate-900/60 border border-slate-800/60 px-2.5 py-1 rounded-xl">
+                        <span>{formatTime(currentTime)}</span>
+                        <span className="text-slate-600 mx-1">/</span>
+                        <span className="text-slate-400">{formatTime(duration)}</span>
                       </div>
                     </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            )}
+
+                    {/* Right Actions: Settings, PiP, Fullscreen */}
+                    <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                      <button 
+                        onClick={() => {
+                          setShowSettingsMenu(!showSettingsMenu);
+                          setSettingsSubmenu("main");
+                        }} 
+                        className={`p-2 rounded-xl border transition-all cursor-pointer ${
+                          showSettingsMenu 
+                            ? "bg-purple-600/30 border-purple-500 text-purple-300 shadow-md shadow-purple-950/40" 
+                            : "bg-slate-900/80 hover:bg-slate-800 border-slate-800 text-slate-400 hover:text-white"
+                        }`}
+                        title="Pengaturan Pemutaran & Kualitas"
+                      >
+                        <Settings className={`w-4 h-4 ${showSettingsMenu ? "rotate-90 transition-transform duration-300 text-purple-400" : ""}`} />
+                      </button>
+
+                      <button 
+                        onClick={togglePiP} 
+                        className="p-2 bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-800 active:scale-95 transition-all cursor-pointer hidden sm:flex"
+                        title="Picture in Picture"
+                      >
+                        <SquareStack className="w-4 h-4" />
+                      </button>
+
+                      <button 
+                        onClick={toggleFullscreen} 
+                        className="p-2 bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl border border-slate-800 active:scale-95 transition-all cursor-pointer"
+                        title="Fullscreen"
+                      >
+                        {isFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         );
       }

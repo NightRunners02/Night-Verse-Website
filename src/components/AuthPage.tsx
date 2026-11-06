@@ -256,23 +256,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialIsAdmin = false }) =>
             </p>
           </div>
 
-          {/* Sandbox Credentials Tooltip Drawer */}
-          <div className="p-3 bg-slate-950/80 border border-slate-800/80 rounded-xl text-[10px] font-mono text-slate-400 space-y-1">
-            <span className="text-purple-400 font-bold block mb-1">Sandbox Evaluation Login Cards:</span>
-            {isAdminLogin ? (
-              <>
-                <p>🔹 <span className="text-slate-200">Super Admin:</span> superadmin@nightverse.com | admin123</p>
-                <p>🔹 <span className="text-slate-200">Executive Admin:</span> admin@nightverse.com | admin123</p>
-                <p>🔹 <span className="text-slate-200">Moderations Lead:</span> mod@nightverse.com | mod123</p>
-              </>
-            ) : (
-              <>
-                <p>🔹 <span className="text-slate-200">Visual Photographer:</span> neon_shadow | user123</p>
-                <p>🔹 <span className="text-slate-200">Cyber Illustrator:</span> pixel_dreamer | user123</p>
-                <p>💡 <span className="text-slate-200">Or establish custom profiles instantly by clicking sign up!</span></p>
-              </>
-            )}
-          </div>
 
           {/* Core Login/Register Router Forms */}
           {isForgotPassword ? (

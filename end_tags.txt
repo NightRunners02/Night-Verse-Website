@@ -1,0 +1,659 @@
+897:        <div className="absolute top-0 right-0 w-80 h-32 bg-purple-500/10 blur-[100px] rounded-full pointer-events-none"></div>
+898:        <div className="absolute bottom-0 left-12 w-64 h-24 bg-cyan-500/10 blur-[80px] rounded-full pointer-events-none"></div>
+904:            </div>
+911:          </div>
+924:            </button>
+925:          </div>
+926:        </div>
+927:      </div>
+939:              <span className="text-[9px] text-slate-500 uppercase tracking-widest font-mono font-bold block">Total Registered Users</span>
+941:                <span className="text-2xl md:text-3xl font-black font-space text-slate-100">{dbStats.totalUsers}</span>
+942:                <span className="text-[10px] text-emerald-400 font-mono font-bold">+{dbStats.newUsersToday} today</span>
+943:              </div>
+944:            </div>
+947:              <span className="text-[9px] text-slate-500 uppercase tracking-widest font-mono font-bold block">Active Session Users</span>
+949:                <span className="text-2xl md:text-3xl font-black font-space text-emerald-400">{dbStats.activeUsers}</span>
+950:                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block animate-ping"></span>
+951:              </div>
+952:            </div>
+955:              <span className="text-[9px] text-slate-500 uppercase tracking-widest font-mono font-bold block">Content Publications</span>
+957:                <span className="text-2xl md:text-3xl font-black font-space text-purple-400">{dbStats.totalBlogs + dbStats.totalPhotos + dbStats.totalVideos}</span>
+958:                <span className="text-[10px] text-slate-500 font-mono">B/P/V split</span>
+959:              </div>
+960:            </div>
+963:              <span className="text-[9px] text-slate-500 uppercase tracking-widest font-mono font-bold block">Platform Tag Footprint</span>
+965:                <span className="text-2xl md:text-3xl font-black font-space text-cyan-400">{dbStats.totalTags}</span>
+966:                <span className="text-[10px] text-slate-500 font-mono">hashtags</span>
+967:              </div>
+968:            </div>
+973:                  <span className="text-[9px] text-slate-500 uppercase tracking-widest font-mono font-bold block">Server Sandbox Storage</span>
+977:                    </span>
+978:                    <span className="text-[10px] text-slate-500 font-mono">/ 1,048,576 MB</span>
+979:                  </div>
+980:                </div>
+984:                   </div>
+990:                   </button>
+991:                </div>
+992:              </div>
+999:                ></div>
+1000:              </div>
+1001:            </div>
+1003:          </div>
+1011:                <span className="text-[9px] font-mono uppercase tracking-widest text-purple-500 font-bold block">User growth & publications volume timeline</span>
+1013:              </div>
+1019:                <div className="absolute inset-x-0 top-1/4 border-b border-slate-900/40 pointer-events-none"></div>
+1020:                <div className="absolute inset-x-0 top-2/4 border-b border-slate-900/40 pointer-events-none"></div>
+1021:                <div className="absolute inset-x-0 top-3/4 border-b border-slate-900/40 pointer-events-none"></div>
+1048:                  <span>Mon (23)</span>
+1049:                  <span>Tue (38)</span>
+1050:                  <span>Wed (64)</span>
+1051:                  <span>Thu (91)</span>
+1052:                  <span>Fri ({dbStats.totalUsers} Active)</span>
+1053:                </div>
+1055:              </div>
+1073:                      <span className="font-bold text-slate-250">Split</span>
+1074:                    </div>
+1075:                  </div>
+1078:                    <span className="text-[10px] text-slate-500 block">Content Distribution</span>
+1080:                      <span className="flex items-center gap-1.5 text-slate-350"><span className="w-2 h-2 rounded-full bg-purple-500"></span> Photos</span>
+1081:                      <span className="font-mono text-slate-400">{dbStats.totalPhotos} ({Math.round((dbStats.totalPhotos/Math.max(1, dbStats.totalBlogs + dbStats.totalPhotos + dbStats.totalVideos))*100)}%)</span>
+1082:                    </div>
+1084:                      <span className="flex items-center gap-1.5 text-slate-350"><span className="w-2 h-2 rounded-full bg-cyan-400"></span> Blogs</span>
+1085:                      <span className="font-mono text-slate-400">{dbStats.totalBlogs} ({Math.round((dbStats.totalBlogs/Math.max(1, dbStats.totalBlogs + dbStats.totalPhotos + dbStats.totalVideos))*100)}%)</span>
+1086:                    </div>
+1088:                      <span className="flex items-center gap-1.5 text-slate-350"><span className="w-2 h-2 rounded-full bg-indigo-500"></span> Videos</span>
+1089:                      <span className="font-mono text-slate-400">{dbStats.totalVideos} ({Math.round((dbStats.totalVideos/Math.max(1, dbStats.totalBlogs + dbStats.totalPhotos + dbStats.totalVideos))*100)}%)</span>
+1090:                    </div>
+1091:                  </div>
+1093:                </div>
+1097:                    <span className="text-[10px] text-slate-500 uppercase font-mono font-bold">Review Pipeline Ingests</span>
+1098:                    <span className="text-[10px] text-rose-400 bg-rose-500/10 border border-rose-500/20 py-0.5 px-2 rounded-full font-mono">{dbStats.pendingReviews} pending</span>
+1099:                  </div>
+1102:                      <span className="text-slate-400">Approved Platform Content</span>
+1103:                      <span className="text-slate-100 font-mono">{dbStats.approvedContent} posts</span>
+1104:                    </div>
+1106:                      <div className="bg-emerald-500 h-full rounded-full" style={{ width: "92%" }}></div>
+1107:                    </div>
+1108:                  </div>
+1111:                      <span className="text-slate-400">Rejected & Filtered Out</span>
+1112:                      <span className="text-slate-100 font-mono">{dbStats.rejectedContent} posts</span>
+1113:                    </div>
+1115:                      <div className="bg-rose-500 h-full rounded-full" style={{ width: "8%" }}></div>
+1116:                    </div>
+1117:                  </div>
+1118:                </div>
+1120:              </div>
+1122:            </div>
+1128:                  <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping"></span> Live SSE broadcasts receiver
+1129:                </span>
+1131:              </div>
+1140:                        <span className="text-purple-400 font-bold">[{log.action.toUpperCase()}]</span>
+1141:                        <span className="text-[8px] text-slate-600">{new Date(log.timestamp).toLocaleTimeString()}</span>
+1142:                      </div>
+1144:                    </div>
+1147:              </div>
+1151:            </div>
+1153:          </div>
+1155:        </div>
+1175:            </button>
+1187:            </button>
+1188:          </div>
+1199:              </div>
+1212:              </div>
+1213:            </div>
+1239:                      </div>
+1268:                              </div>
+1269:                            </div>
+1280:                                  <span className="font-bold text-slate-200">@{usr.username}</span>
+1281:                                  {usr.role === "SUPER_ADMIN" && <span className="text-[8px] bg-red-950 text-red-400 px-1.5 py-0.5 rounded font-mono font-bold">ROOT</span>}
+1282:                                </div>
+1284:                              </div>
+1285:                            </div>
+1294:                            </span>
+1320:                                </button>
+1329:                                </button>
+1341:                                </button>
+1342:                             </div>
+1356:                      </span>
+1357:                   </div>
+1375:                        </button>
+1396:                        </button>
+1402:                        </button>
+1403:                      </div>
+1404:                </div>
+1406:            </div>
+1407:          </div>
+1418:                <button onClick={() => setInspectedUser(null)} className="text-xs text-slate-500 hover:text-white">Close Dossier</button>
+1419:              </div>
+1428:                  </div>
+1430:                    <span className="py-0.5 px-2 bg-slate-950 border border-slate-850 rounded font-mono text-[9px]">ID: {inspectedUser.id}</span>
+1431:                    <span className="py-0.5 px-2 bg-slate-950 border border-slate-850 rounded font-mono text-[9px] capitalize">Role: {inspectedUser.role}</span>
+1432:                  </div>
+1433:                </div>
+1438:                      <span className="text-[10px] text-slate-500 uppercase">Creator Bio Description</span>
+1440:                    </div>
+1442:                      <span className="text-[10px] text-slate-500 uppercase">Design Specialties</span>
+1444:                    </div>
+1445:                  </div>
+1449:                      <span className="text-[9px] text-slate-500 block">WEBSITE/LINK</span>
+1451:                    </div>
+1453:                      <span className="text-[9px] text-slate-500 block">WORKPLACE</span>
+1454:                      <span className="text-slate-300">{inspectedUser.profile?.location || "Cosmic Hub"}</span>
+1455:                    </div>
+1457:                      <span className="text-[9px] text-slate-500 block">MEMBER SINCE</span>
+1458:                      <span className="text-slate-400">June 2026</span>
+1459:                    </div>
+1460:                  </div>
+1464:                      <span className="text-[10px] uppercase font-bold text-rose-400">CRITICAL ACCOUNT SUSPENSION GATE</span>
+1466:                    </div>
+1476:                    </button>
+1477:                  </div>
+1479:                </div>
+1481:              </div>
+1482:            </div>
+1485:        </div>
+1500:              </div>
+1512:                </div>
+1515:                </div>
+1516:              </div>
+1517:            </div>
+1526:              </div>
+1533:                    <span className="text-[10px] font-mono uppercase tracking-wider text-cyan-400 font-black block border-l-2 border-cyan-400 pl-2">Articles awaiting print validation ({filteredPendingBlogs.length})</span>
+1541:                          </div>
+1549:                            </button>
+1555:                            </button>
+1561:                            </button>
+1562:                          </div>
+1563:                        </div>
+1565:                    </div>
+1566:                  </div>
+1572:                    <span className="text-[10px] font-mono uppercase tracking-wider text-purple-400 font-black block border-l-2 border-purple-500 pl-2 font-space">Photos pending portfolio exhibit ({filteredPendingPhotos.length})</span>
+1581:                            </div>
+1589:                              </button>
+1595:                              </button>
+1601:                              </button>
+1602:                            </div>
+1603:                          </div>
+1604:                        </div>
+1606:                    </div>
+1607:                  </div>
+1613:                    <span className="text-[10px] font-mono uppercase tracking-wider text-indigo-400 font-black block border-l-2 border-indigo-500 pl-2 font-space">AV reels & loop files awaiting encoding ({filteredPendingVideos.length})</span>
+1619:                            <span className="absolute inset-0 flex items-center justify-center text-xs">▶</span>
+1620:                          </div>
+1625:                            </div>
+1633:                              </button>
+1639:                              </button>
+1645:                              </button>
+1646:                            </div>
+1647:                          </div>
+1648:                        </div>
+1650:                    </div>
+1651:                  </div>
+1654:              </div>
+1675:                  </span>
+1676:                  <button onClick={() => setActiveRejectTarget(null)} className="text-[10px] text-slate-500 hover:text-white">Cancel</button>
+1677:                </div>
+1697:                </button>
+1698:              </div>
+1701:          </div>
+1703:        </div>
+1712:            <div className="absolute top-0 right-0 w-80 h-32 bg-indigo-500/10 blur-[90px] rounded-full pointer-events-none"></div>
+1718:                </span>
+1725:              </div>
+1730:                  <span className="text-[9px] text-slate-505 block uppercase font-mono">Banned/Blocked</span>
+1731:                  <span className="text-sm font-black text-rose-451">{blockedTagsList.length} Labels</span>
+1732:                </div>
+1734:                  <span className="text-[9px] text-slate-505 block uppercase font-mono">Purged History</span>
+1735:                  <span className="text-sm font-black text-cyan-400">{deletedTagsBackup.length} Purges</span>
+1736:                </div>
+1737:              </div>
+1738:            </div>
+1739:          </div>
+1752:                </div>
+1763:                </div>
+1764:              </div>
+1771:                  </div>
+1792:                            </span>
+1794:                              <span className="text-[9px] text-slate-500 font-mono">Author ID: @{tag.mostActiveUsername || "nightmaster"}</span>
+1798:                                </span>
+1802:                              </span>
+1803:                            </div>
+1804:                          </div>
+1807:                          </span>
+1808:                        </div>
+1813:                            <span className="text-slate-500 block uppercase font-mono">Blogs</span>
+1815:                          </div>
+1817:                            <span className="text-slate-555 block uppercase font-mono">Photos</span>
+1819:                          </div>
+1821:                            <span className="text-slate-500 block uppercase font-mono">Videos</span>
+1823:                          </div>
+1824:                        </div>
+1842:                            </button>
+1853:                            </button>
+1854:                          </div>
+1866:                          </button>
+1867:                        </div>
+1868:                      </div>
+1872:              </div>
+1878:                </div>
+1918:                  </span>
+1954:                </div>
+1955:              </div>
+1957:            </div>
+1969:                </div>
+1991:                    </button>
+1992:                  </div>
+2001:                          <span className="font-mono text-xs text-rose-400">#{keyword}</span>
+2008:                          </button>
+2009:                        </div>
+2012:                  </div>
+2013:                </div>
+2014:              </div>
+2023:                </div>
+2032:                          <span className="font-mono text-xs text-slate-200">#{purged.name}</span>
+2033:                          <span className="text-[8.5px] text-slate-505 font-mono block">Backup Count: {purged.count || 0}</span>
+2034:                        </div>
+2042:                        </button>
+2043:                      </div>
+2046:                </div>
+2047:              </div>
+2049:            </div>
+2051:          </div>
+2063:                    <span className="text-[9px] font-mono uppercase bg-slate-900 border border-slate-850 text-indigo-400 px-2.5 py-0.5 rounded-full select-none">Auditor Page</span>
+2064:                  </div>
+2066:                </div>
+2074:                </button>
+2075:              </div>
+2080:                  <span className="text-[9px] text-slate-500 uppercase block font-mono">Original Creator</span>
+2081:                  <span className="text-indigo-400 font-bold">@{selectedTagDetail.mostActiveUsername || "nightmaster"}</span>
+2082:                </div>
+2084:                  <span className="text-[9px] text-slate-500 uppercase block font-mono">Database ID</span>
+2085:                  <span className="text-slate-305 font-bold truncate block">ID: {selectedTagDetail.id}</span>
+2086:                </div>
+2088:                  <span className="text-[9px] text-slate-500 uppercase block font-mono">Growth Index (24h)</span>
+2091:                  </span>
+2092:                </div>
+2094:                  <span className="text-[9px] text-slate-500 uppercase block font-mono">Taxonomy Last Active</span>
+2097:                  </span>
+2098:                </div>
+2099:              </div>
+2132:                              <span>BLOG POST DIRECTORY</span>
+2133:                              <span>@{blog.authorUsername || "author"}</span>
+2134:                            </div>
+2137:                          </div>
+2148:                          </button>
+2149:                        </div>
+2157:                              <span className="text-cyan-400">PHOTO EXHIBIT</span>
+2158:                              <span>@{photo.creatorUsername || "artist"}</span>
+2159:                            </div>
+2162:                          </div>
+2172:                          </button>
+2173:                        </div>
+2181:                              <span>VIDEO ASSET STREAM</span>
+2182:                              <span>@{video.creatorUsername || "videographer"}</span>
+2183:                            </div>
+2186:                              <span className="text-[9px] font-mono word-break line-clamp-1">{video.title || "Custom Stream Element"}</span>
+2187:                            </div>
+2188:                          </div>
+2198:                          </button>
+2199:                        </div>
+2202:                    </div>
+2206:              </div>
+2208:            </div>
+2211:        </div>
+2226:                  </div>
+2229:                  </span>
+2230:                </div>
+2242:                </div>
+2249:                    </div>
+2273:                                <span>@{usr.username}</span>
+2275:                                  <span className="text-[8px] bg-rose-500/20 text-rose-400 border border-rose-500/30 px-1 rounded font-mono font-bold">ROOT</span>
+2277:                              </div>
+2279:                            </div>
+2280:                          </div>
+2286:                            </div>
+2287:                          </div>
+2288:                        </div>
+2292:                </div>
+2293:              </div>
+2301:                    </div>
+2308:                  </div>
+2324:                            <span className="text-xs text-indigo-400 font-mono">@{inspectedUser.username}</span>
+2326:                          </div>
+2330:                        </div>
+2331:                      </div>
+2334:                        <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">User ID:</span>
+2335:                        <span className="text-xs font-mono font-bold text-slate-300">{inspectedUser.id}</span>
+2336:                      </div>
+2337:                    </div>
+2345:                        </span>
+2348:                        </span>
+2349:                      </div>
+2355:                          </span>
+2366:                                <span>{bName}</span>
+2375:                                  </button>
+2377:                              </div>
+2381:                      </div>
+2382:                    </div>
+2390:                        </span>
+2393:                        </span>
+2394:                      </div>
+2420:                                    </div>
+2425:                                      </span>
+2426:                                    </div>
+2427:                                  </div>
+2438:                                  </span>
+2439:                                </div>
+2444:                              </div>
+2454:                                    <span>UNLOCKED</span>
+2455:                                  </button>
+2461:                                    </span>
+2462:                                  </div>
+2473:                                    <span>UNLOCK BADGE</span>
+2474:                                  </button>
+2476:                              </div>
+2477:                            </div>
+2480:                      </div>
+2481:                    </div>
+2484:              </div>
+2485:            </div>
+2500:                </div>
+2501:              </div>
+2516:                          </div>
+2520:                            </span>
+2523:                            </span>
+2524:                          </div>
+2525:                        </div>
+2529:                          <span className="text-[10px] font-mono text-indigo-400">ID: {b.id}</span>
+2531:                        </div>
+2532:                      </div>
+2538:                        </div>
+2540:                          <span>Status: <strong className="text-emerald-400">{b.status}</strong></span>
+2541:                          <span>Dibuat: {new Date(b.createdAt).toLocaleDateString()}</span>
+2542:                        </div>
+2543:                      </div>
+2544:                    </div>
+2547:              </div>
+2548:            </div>
+2563:                </div>
+2574:                </div>
+2575:              </div>
+2608:                            </span>
+2614:                              <span className="text-[8px] opacity-70 font-mono">T{award.badgeTier}</span>
+2615:                            </span>
+2619:                              <span className="font-mono text-xs text-slate-300">@{award.grantedByUsername}</span>
+2621:                            </div>
+2629:                            </span>
+2642:              </div>
+2643:            </div>
+2659:              </div>
+2671:                </div>
+2673:                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+2674:                <span className="text-[10px] font-mono text-emerald-400 uppercase font-black tracking-widest leading-relaxed">SECURE SSE LINKED</span>
+2675:              </div>
+2676:            </div>
+2677:          </div>
+2682:                <div className="text-center py-16 text-slate-600 font-mono">No telemetry audits reported to console matching your search.</div>
+2687:                      <span className="text-rose-455 font-bold uppercase bg-rose-955/10 border border-rose-500/10 px-2 py-0.5 rounded">Action: {log.action}</span>
+2688:                      <span className="text-[10px] text-slate-600 text-right">{new Date(log.timestamp).toLocaleString()}</span>
+2689:                    </div>
+2694:                      <span>Operator: <span className="text-slate-400 font-bold">@{log.adminUsername || "System"}</span></span>
+2695:                      <span>Category classification: <span className="text-emerald-400 font-bold uppercase">{log.targetType}</span></span>
+2696:                      {log.targetId && <span>Filing Target Ref: <span className="slate-400 font-mono">{log.targetId}</span></span>}
+2697:                    </div>
+2698:                  </div>
+2701:            </div>
+2707:                <span className="font-extrabold uppercase text-[10.5px] block font-mono">Simulated Brute-Force login safeguards:</span>
+2709:              </div>
+2710:            </div>
+2712:          </div>
+2714:        </div>
+2728:            </div>
+2738:                    </span>
+2742:                      </span>
+2746:                      </span>
+2748:                  </div>
+2756:                </div>
+2768:                    </button>
+2776:                    </button>
+2777:                  </div>
+2779:              </div>
+2800:                            </div>
+2802:                              <span className="text-[10px] font-mono text-slate-500 font-bold block">1. Photo</span>
+2804:                            </div>
+2805:                          </div>
+2811:                            </span>
+2827:                            </button>
+2828:                          </div>
+2829:                        </div>
+2837:                          <span className={`w-2 h-2 rounded-full shrink-0 ${isPhotoAuto ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+2840:                          </span>
+2841:                        </div>
+2848:                      </div>
+2851:                        <span>New uploads only</span>
+2854:                        </span>
+2855:                      </div>
+2856:                    </div>
+2876:                            </div>
+2878:                              <span className="text-[10px] font-mono text-slate-500 font-bold block">2. Video</span>
+2880:                            </div>
+2881:                          </div>
+2887:                            </span>
+2903:                            </button>
+2904:                          </div>
+2905:                        </div>
+2913:                          <span className={`w-2 h-2 rounded-full shrink-0 ${isVideoAuto ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+2916:                          </span>
+2917:                        </div>
+2924:                      </div>
+2927:                        <span>New uploads only</span>
+2930:                        </span>
+2931:                      </div>
+2932:                    </div>
+2952:                            </div>
+2954:                              <span className="text-[10px] font-mono text-slate-500 font-bold block">3. Blog</span>
+2956:                            </div>
+2957:                          </div>
+2963:                            </span>
+2979:                            </button>
+2980:                          </div>
+2981:                        </div>
+2989:                          <span className={`w-2 h-2 rounded-full shrink-0 ${isBlogAuto ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+2992:                          </span>
+2993:                        </div>
+3000:                      </div>
+3003:                        <span>New uploads only</span>
+3006:                        </span>
+3007:                      </div>
+3008:                    </div>
+3012:              </div>
+3018:                  <span>Kebijakan persetujuan ini tersimpan permanen di database dan divalidasi backend untuk setiap unggahan baru.</span>
+3019:                </div>
+3020:                <span className="text-slate-500">Konten terdahulu tidak terpengaruh oleh perubahan toggle.</span>
+3021:              </div>
+3023:            </div>
+3033:                    </span>
+3037:                      </span>
+3041:                      </span>
+3043:                  </div>
+3051:                </div>
+3064:                    <span>Reset to Default</span>
+3065:                  </button>
+3067:              </div>
+3100:                        </div>
+3108:                        </div>
+3112:                          </span>
+3114:                      </div>
+3115:                    </div>
+3120:                        <span className="text-slate-500 block">FORMAT</span>
+3122:                      </div>
+3124:                        <span className="text-slate-500 block">MAX SIZE</span>
+3126:                      </div>
+3128:                        <span className="text-slate-500 block">CACHE</span>
+3130:                      </div>
+3131:                    </div>
+3132:                  </div>
+3146:                          <span>Menyimpan...</span>
+3151:                          <span>Save Changes</span>
+3154:                    </button>
+3165:                      </button>
+3167:                  </div>
+3168:                </div>
+3182:                        <div className="w-2.5 h-2.5 rounded-full bg-rose-500/80"></div>
+3183:                        <div className="w-2.5 h-2.5 rounded-full bg-amber-500/80"></div>
+3184:                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/80"></div>
+3185:                      </div>
+3200:                        </span>
+3202:                      </div>
+3206:                        <span className="text-[10px] truncate">Dashboard</span>
+3207:                      </div>
+3208:                    </div>
+3213:                      <span className="text-slate-400 font-sans">https://</span>
+3214:                      <span className="text-slate-200 font-sans font-semibold">nightverse.live</span>
+3215:                      <span className="text-slate-500 font-sans">/explore</span>
+3218:                      </span>
+3219:                    </div>
+3235:                        </div>
+3237:                          <span className="text-[10px] font-mono text-slate-400 block font-bold">16 × 16 px</span>
+3238:                          <span className="text-[9px] text-slate-500 truncate block">Browser Tab standard</span>
+3239:                        </div>
+3240:                      </div>
+3253:                        </div>
+3255:                          <span className="text-[10px] font-mono text-slate-400 block font-bold">32 × 32 px</span>
+3256:                          <span className="text-[9px] text-slate-500 truncate block">Retina / Bookmark</span>
+3257:                        </div>
+3258:                      </div>
+3271:                        </div>
+3273:                          <span className="text-[10px] font-mono text-slate-400 block font-bold">64 × 64 px</span>
+3274:                          <span className="text-[9px] text-slate-500 truncate block">PWA / HiDPI icon</span>
+3275:                        </div>
+3276:                      </div>
+3278:                    </div>
+3280:                  </div>
+3287:                        URL Aktif: <span className="text-slate-300 font-bold">{systemSettings.faviconUrl || "/favicon.svg"}</span>
+3288:                      </span>
+3289:                    </div>
+3292:                    </span>
+3293:                  </div>
+3295:                </div>
+3297:              </div>
+3299:            </div>
+3306:                <span className="text-[10px] uppercase font-mono tracking-widest text-purple-400 font-black block border-l-2 border-purple-500 pl-2"> Branded App Aesthetics</span>
+3316:                </div>
+3326:                </div>
+3359:                  </div>
+3360:                </div>
+3370:                </div>
+3380:                </div>
+3382:              </div>
+3386:                <span className="text-[10px] uppercase font-mono tracking-widest text-cyan-400 font-black block border-l-2 border-cyan-400 pl-2">Upload Files bounds & SEO</span>
+3397:                  </div>
+3406:                  </div>
+3407:                </div>
+3417:                </div>
+3427:                </div>
+3437:                </div>
+3449:                    <span>Real-time SSE Stream Broadcasts</span>
+3459:                    <span>Email Verification checks</span>
+3462:                </div>
+3473:                      <span className="font-bold text-white block font-space text-xs">Creator Masterpieces Blur Effect</span>
+3474:                      <span className="text-[10px] text-slate-400 block font-sans mt-0.5">ON: Seluruh media visual pada kartu Curated Creator Masterpieces menjadi blur. OFF: Normal.</span>
+3475:                    </div>
+3477:                </div>
+3479:              </div>
+3481:            </div>
+3490:              </button>
+3491:            </div>
+3493:          </div>
+3495:        </div>
+3502:        </div>
+3520:              <span className="text-sm font-bold text-slate-200">Content ID: {contentToDeleteLog.contentId}</span>
+3521:              <span className="text-xs font-mono text-purple-400">Type: {contentToDeleteLog.contentType}</span>
+3523:                <span className="flex items-center gap-1">Reported around {new Date(contentToDeleteLog.createdAt).toLocaleDateString()}</span>
+3524:              </div>
+3525:            </div>
+3555:            <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest font-bold">Selected hashtags:</span>
+3562:                    </span>
+3565:            </div>
+3567:          </div>
+3600:              <span className="text-sm font-bold text-slate-200">Tag: #{tagToDelete.name}</span>
+3601:              <span className="text-xs font-mono text-purple-400">Total Uses: {tagToDelete.count || tagToDelete.usageCount || 0}</span>
+3603:                <span>Created {new Date(tagToDelete.createdAt).toLocaleDateString()}</span>
+3604:              </div>
+3605:            </div>
+3623:                  </div>
+3627:                  </div>
+3628:                </div>
+3635:                </button>
+3636:              </div>
+3644:                    </div>
+3650:                        </span>
+3651:                      </div>
+3653:                    </div>
+3654:                  </div>
+3663:                    </span>
+3664:                  </div>
+3675:                    <span className="text-xs font-bold text-slate-200">Penerima: @{inspectedUser.username}</span>
+3676:                  </div>
+3678:                </div>
+3691:                </div>
+3703:                  </div>
+3708:                    </div>
+3709:                  </div>
+3710:                </div>
+3711:              </div>
+3721:                </button>
+3731:                      <span>UNLOCKING...</span>
+3736:                      <span>CONFIRM & UNLOCK BADGE</span>
+3739:                </button>
+3740:              </div>
+3741:            </div>
+3742:          </div>
+3754:                </div>
+3758:                </div>
+3759:              </div>
+3762:              </button>
+3763:            </div>
+3777:                </div>
+3789:                </div>
+3790:              </div>
+3811:                </div>
+3825:                </div>
+3841:                </div>
+3842:              </div>
+3859:                    </button>
+3861:                </div>
+3862:              </div>
+3874:              </div>
+3886:              </div>
+3895:                </button>
+3901:                </button>
+3902:              </div>
+3904:          </div>
+3905:        </div>
+3914:                <h2 className="font-bold font-space text-lg text-slate-100">#{previewTag.name} <span className="text-sm text-slate-500 font-mono">Directory Preview</span></h2>
+3916:                  <span>Usage: {previewTag.count || previewTag.usageCount || 0} times</span>
+3917:                  <span>Origin: {previewTag.mostActiveUsername ? `@${previewTag.mostActiveUsername}` : "Anonymous"}</span>
+3918:                </div>
+3919:              </div>
+3925:              </button>
+3926:            </div>
+3939:                        </div>
+3941:                    </div>
+3942:                  </div>
+3955:                          </div>
+3956:                        </div>
+3958:                    </div>
+3959:                  </div>
+3971:                        </div>
+3973:                    </div>
+3974:                  </div>
+3982:                   </div>
+3984:              </div>
+3985:            </div>
+3997:               </button>
+4006:               </button>
+4007:            </div>
+4008:          </div>
+4009:        </div>
+4012:    </div>

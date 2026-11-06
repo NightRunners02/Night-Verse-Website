@@ -44,7 +44,15 @@ export const ContentCreator: React.FC = () => {
 
   // Common parameters
   const [title, setTitle] = useState("");
+  const [isTitleManuallyEdited, setIsTitleManuallyEdited] = useState(false);
   const [description, setDescription] = useState("");
+
+  const extractTitleFromFileName = (fileName: string): string => {
+    if (!fileName || typeof fileName !== "string") return "";
+    const nameOnly = fileName.split(/[/\\]/).pop() || fileName;
+    const titleWithoutExt = nameOnly.replace(/\.[^/.]+$/, "");
+    return titleWithoutExt.trim();
+  };
   const [tagsInput, setTagsInput] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [category, setCategory] = useState("Others");
@@ -311,6 +319,11 @@ export const ContentCreator: React.FC = () => {
 
   const compressImage = (base64: string, maxWidth: number = 1000): Promise<string> => {
     return new Promise((resolve) => {
+      // Do NOT compress animated GIFs via canvas as canvas flattens GIF to a single static JPEG frame
+      if (base64.startsWith('data:image/gif') || base64.includes('image/gif')) {
+        resolve(base64);
+        return;
+      }
       const img = new Image();
       img.src = base64;
       img.onload = () => {
@@ -329,6 +342,9 @@ export const ContentCreator: React.FC = () => {
         ctx?.drawImage(img, 0, 0, width, height);
         resolve(canvas.toDataURL('image/jpeg', 0.7)); // Compressing to JPEG with 70% quality
       };
+      img.onerror = () => {
+        resolve(base64);
+      };
     });
   };
 
@@ -336,8 +352,16 @@ export const ContentCreator: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Auto-detect Creative Title from file name (stripping extension)
+    const detectedTitle = extractTitleFromFileName(file.name);
+    if (detectedTitle) {
+      if (!title.trim() || !isTitleManuallyEdited) {
+        setTitle(detectedTitle);
+      }
+    }
+
     if (file.size > 2 * 1024 * 1024) {
-      triggerToast("Large File Detected", "Compressing image to save storage space...", "info");
+      triggerToast("Large File Detected", "Processing media file for optimal playback...", "info");
     }
 
     // Save filename and size for real-time preview
@@ -353,15 +377,16 @@ export const ContentCreator: React.FC = () => {
     const reader = new FileReader();
     reader.onloadend = async () => {
       const rawBase64 = reader.result as string;
+      const isGif = file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif') || rawBase64.startsWith('data:image/gif');
       
-      // If it's an image, compress it
-      if (file.type.startsWith('image/')) {
-        const compressed = await compressImage(rawBase64);
+      // Preserve GIF animation by bypassing canvas compression
+      if (file.type.startsWith('image/') || isGif) {
+        const finalMedia = isGif ? rawBase64 : await compressImage(rawBase64);
         if (activeMediaTab === "blog") {
-          setBlogThumbnail(compressed);
+          setBlogThumbnail(finalMedia);
         } else {
-          setUploadedBase64(compressed);
-          setMediaUrl(compressed);
+          setUploadedBase64(finalMedia);
+          setMediaUrl(finalMedia);
         }
       } else {
         setUploadedBase64(rawBase64);
@@ -506,6 +531,7 @@ export const ContentCreator: React.FC = () => {
   const handleEdit = (item: any) => {
     setEditingContent(item);
     setTitle(item.title || "");
+    setIsTitleManuallyEdited(true);
     setDescription(item.description || "");
     setTags(item.tags || []);
     setTagsInput("");
@@ -655,6 +681,7 @@ export const ContentCreator: React.FC = () => {
   const resetForm = () => {
     setEditingContent(null);
     setTitle("");
+    setIsTitleManuallyEdited(false);
     setDescription("");
     setTags([]);
     setTagsInput("");
@@ -928,7 +955,10 @@ export const ContentCreator: React.FC = () => {
                        <input 
                          type="text" 
                          value={title}
-                         onChange={(e) => setTitle(e.target.value)}
+                         onChange={(e) => {
+                           setTitle(e.target.value);
+                           setIsTitleManuallyEdited(true);
+                         }}
                          placeholder="Synthesizing new idea..." 
                          className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 md:py-3 text-[13px] md:text-sm focus:border-purple-500 outline-none transition-all placeholder:text-slate-700" 
                        />

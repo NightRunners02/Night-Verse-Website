@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import {
   Compass, Activity, PlusSquare, Tags, User, ShieldAlert, BadgeCheck, ListCollapse, ShieldCheck,
   LogOut, Bell, Search, Sun, Moon, Sparkles, CheckCheck, Play, Users, Shield, Settings, AlertTriangle,
-  Menu, X, ArrowRight
+  Menu, X, ArrowRight, BookOpen
 } from "lucide-react";
 import { useAppState } from "../context/AppState.js";
 import { Role } from "../types.js";
@@ -110,6 +110,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
     { label: "Content Center", tab: "admin-content", icon: BadgeCheck, glow: false },
     { label: "Reports", tab: "admin-reports", icon: AlertTriangle, glow: false },
     { label: "Badges", tab: "admin-badges", icon: ShieldCheck, glow: false },
+    { label: "Documentation", tab: "admin-docs", icon: BookOpen, glow: false },
     { label: "System Settings", tab: "admin-settings", icon: Settings, glow: false },
     { label: "Audit Center", tab: "admin-audit", icon: Shield, glow: false },
     ...(user.role === "SUPER_ADMIN" ? [{ label: "Super Admin Tools", tab: "admin-super", icon: ShieldAlert, glow: true }] : []),
@@ -147,7 +148,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
               {(!sidebarCollapsed || mobileMenuOpen) && (
                 <div className="flex items-center gap-2 select-none pointer-events-none">
                   {systemSettings?.logoUrl ? (
-                    <img src={systemSettings.logoUrl || undefined} className="w-8 h-8 rounded-lg object-cover" alt="app logo" />
+                    <img src={systemSettings.logoUrl} className="w-8 h-8 rounded-lg object-contain bg-slate-950 p-0.5" alt="app logo" />
                   ) : (
                     <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-500 p-[1px]">
                       <div className="w-full h-full bg-slate-950 rounded-[7px] flex items-center justify-center font-space font-bold uppercase text-[10px] text-transparent bg-clip-text bg-gradient-to-tr from-purple-400 to-indigo-300">
@@ -162,9 +163,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
               )}
 
               {sidebarCollapsed && !mobileMenuOpen && (
-                <div className="w-8 h-8 rounded-lg bg-purple-600/20 flex items-center justify-center text-purple-400 font-bold text-xs">
-                   {systemSettings?.logoText?.substring(0, 2) || "NV"}
-                </div>
+                systemSettings?.logoUrl ? (
+                  <img src={systemSettings.logoUrl} className="w-8 h-8 rounded-lg object-contain bg-slate-950 p-0.5" alt="app logo" />
+                ) : (
+                  <div className="w-8 h-8 rounded-lg bg-purple-600/20 flex items-center justify-center text-purple-400 font-bold text-xs">
+                     {systemSettings?.logoText?.substring(0, 2) || "NV"}
+                  </div>
+                )
               )}
 
               <button

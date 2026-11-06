@@ -53,17 +53,25 @@ export const TagAnalytics: React.FC = () => {
   const fetchTagsData = () => {
     setIsRefreshing(true);
     const data = db.tags.getAll();
-    setTagList(data || []);
+    setTagList(Array.isArray(data) ? [...data] : []);
     setIsRefreshing(false);
   };
 
   useEffect(() => {
     fetchTagsData();
-    const handleTagUpdate = () => {
-      fetchTagsData();
+    const handleTagUpdate = (e?: any) => {
+      if (e?.detail && Array.isArray(e.detail)) {
+        setTagList(e.detail.map((t: Tag) => ({ ...t })));
+      } else {
+        fetchTagsData();
+      }
     };
     window.addEventListener("nightverse_tags_updated", handleTagUpdate);
-    return () => window.removeEventListener("nightverse_tags_updated", handleTagUpdate);
+    window.addEventListener("nightverse_db_updated", handleTagUpdate);
+    return () => {
+      window.removeEventListener("nightverse_tags_updated", handleTagUpdate);
+      window.removeEventListener("nightverse_db_updated", handleTagUpdate);
+    };
   }, [dbActionCount]);
 
   // Tab counters
@@ -178,16 +186,70 @@ export const TagAnalytics: React.FC = () => {
     try {
       if (editingTag) {
         // Edit Tag
+        const prevTagsSnapshot = [...tagList];
+        const oldType = editingTag.type || "General";
+        
+        // 1. Perform database update
         const updated = db.tags.update(editingTag.id, {
           name: cleanName,
           type: formType,
           isAmbiguous: formIsAmbiguous,
           status: editingTag.status || "APPROVED"
         });
+
         if (updated) {
-          triggerToast("Tag Updated ✅", `Hashtag #${cleanName} has been updated to [${formType}].`, "success");
+          // 2. IMMEDIATE SYNCHRONOUS STATE UPDATE: Guarantee fresh array reference and instant UI re-render
+          const updatedTagObject: Tag = {
+            ...editingTag,
+            name: cleanName,
+            type: formType,
+            isAmbiguous: formIsAmbiguous,
+            status: editingTag.status || "APPROVED",
+            updatedAt: new Date().toISOString()
+          };
+
+          setTagList(prev => prev.map(t => {
+            if (t.id === editingTag.id || t.name.toLowerCase() === editingTag.name.toLowerCase()) {
+              return updatedTagObject;
+            }
+            return { ...t };
+          }));
+
+          // 3. Update inspectedTag if currently open
+          if (inspectedTag && (inspectedTag.id === editingTag.id || inspectedTag.name.toLowerCase() === editingTag.name.toLowerCase())) {
+            setInspectedTag({
+              ...inspectedTag,
+              name: cleanName,
+              type: formType,
+              isAmbiguous: formIsAmbiguous
+            });
+          }
+
+          // 4. Close modal immediately
+          setShowAddEditModal(false);
+          setEditingTag(null);
+
+          // 5. Toast Feedback
+          if (oldType !== formType) {
+            triggerToast(
+              "Kategori Tag Berhasil Diperbarui! 🏷️", 
+              `Tag #${cleanName} berpindah dari [${oldType}] ke [${formType}].`, 
+              "success"
+            );
+          } else {
+            triggerToast(
+              "Tag Disimpan ✅", 
+              `Hashtag #${cleanName} telah diperbarui [${formType}].`, 
+              "success"
+            );
+          }
+
+          // 6. Broadcast and sync with global DB
+          triggerDBSync();
+          fetchTagsData();
         } else {
-          triggerToast("Update Error ⚠️", `Could not find tag #${cleanName} to update.`, "error");
+          setTagList(prevTagsSnapshot);
+          triggerToast("Update Error ⚠️", `Gagal memperbarui tag #${cleanName} di database.`, "error");
         }
       } else {
         // Create Tag
@@ -200,16 +262,23 @@ export const TagAnalytics: React.FC = () => {
           createdBy: user?.username || "NightAdmin"
         });
 
-        if (defaultStatus === "APPROVED") {
-          triggerToast("Tag Added 🎉", `Hashtag #${cleanName} added as [${formType}].`, "success");
+        if (created) {
+          setTagList(prev => [{ ...created }, ...prev.filter(t => t.id !== created.id)]);
+          setShowAddEditModal(false);
+          setEditingTag(null);
+
+          if (defaultStatus === "APPROVED") {
+            triggerToast("Tag Added 🎉", `Hashtag #${cleanName} added as [${formType}].`, "success");
+          } else {
+            triggerToast("Proposal Submitted 📤", `Hashtag #${cleanName} submitted for Admin review.`, "info");
+          }
+
+          triggerDBSync();
+          fetchTagsData();
         } else {
-          triggerToast("Proposal Submitted 📤", `Hashtag #${cleanName} submitted for Admin review.`, "info");
+          triggerToast("Save Error ❌", "Gagal menambahkan tag baru.", "error");
         }
       }
-
-      setShowAddEditModal(false);
-      fetchTagsData();
-      triggerDBSync();
     } catch (err: any) {
       console.error(err);
       triggerToast("Save Error ❌", err?.message || "Failed to save tag to database.", "error");
@@ -337,24 +406,6 @@ export const TagAnalytics: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2.5 flex-wrap">
-          <button 
-            onClick={() => setShowLivePreviewModal(true)}
-            className="flex items-center gap-2 text-xs font-bold bg-purple-600/20 hover:bg-purple-600 text-purple-300 hover:text-white py-2.5 px-4 rounded-xl border border-purple-500/30 transition-all cursor-pointer shadow-lg active:scale-95"
-            id="btn-live-preview-tags"
-          >
-            <Sparkles className="w-4 h-4 text-purple-400" />
-            Live Preview Tags
-          </button>
-
-          <button 
-            onClick={handleOpenAddTagModal}
-            className="flex items-center gap-2 text-xs font-bold bg-purple-600 hover:bg-purple-500 text-white py-2.5 px-4 rounded-xl shadow-lg shadow-purple-900/30 transition-all cursor-pointer active:scale-95"
-            id="btn-add-new-tag"
-          >
-            <Plus className="w-4 h-4" />
-            Add New Tag
-          </button>
-
           <button 
             onClick={triggerManualRefresh}
             className="p-2.5 bg-slate-950 hover:bg-slate-900 text-slate-400 hover:text-white rounded-xl border border-slate-800 transition-all cursor-pointer active:scale-95"
@@ -761,21 +812,21 @@ export const TagAnalytics: React.FC = () => {
             />
 
             <motion.div 
-              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              initial={{ scale: 0.95, opacity: 0, y: 15 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
-              exit={{ scale: 0.95, opacity: 0, y: 20 }}
-              className="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl p-6 md:p-8 shadow-2xl z-10 space-y-6"
+              exit={{ scale: 0.95, opacity: 0, y: 15 }}
+              className="relative w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl md:rounded-3xl p-4 md:p-5 shadow-2xl z-10 space-y-4 max-h-[85vh] overflow-y-auto custom-scrollbar"
             >
-              <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-purple-400">
-                    <Tags className="w-5 h-5" />
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-purple-600/20 border border-purple-500/30 flex items-center justify-center text-purple-400">
+                    <Tags className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="text-lg font-black font-space text-white">
+                    <h3 className="text-base font-black font-space text-white leading-tight">
                       {editingTag ? "Edit Tag Configuration" : "Add New Tag"}
                     </h3>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-[11px] text-slate-400 leading-tight">
                       Set single category Type and Ambiguous attribute status.
                     </p>
                   </div>
@@ -783,44 +834,44 @@ export const TagAnalytics: React.FC = () => {
 
                 <button 
                   onClick={() => setShowAddEditModal(false)}
-                  className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
 
-              <form onSubmit={handleSaveTag} className="space-y-5">
+              <form onSubmit={handleSaveTag} className="space-y-3.5">
                 
                 {/* Tag Name Input */}
                 <div>
-                  <label className="block text-xs font-bold font-mono text-slate-300 uppercase mb-2">
+                  <label className="block text-[11px] font-bold font-mono text-slate-300 uppercase mb-1.5">
                     Tag Name
                   </label>
                   <div className="relative">
-                    <span className="absolute left-3.5 top-3 text-purple-400 font-mono font-bold text-sm">#</span>
+                    <span className="absolute left-3 top-2 text-purple-400 font-mono font-bold text-xs">#</span>
                     <input 
                       type="text"
                       placeholder="e.g. minecraft, slippery, jenny_belle, 4k..."
                       value={formName}
                       onChange={(e) => setFormName(e.target.value)}
-                      className="w-full text-sm pl-8 pr-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl focus:outline-none focus:border-purple-500 text-white font-mono placeholder:text-slate-600"
+                      className="w-full text-xs pl-7 pr-3 py-2 bg-slate-950 border border-slate-800 rounded-xl focus:outline-none focus:border-purple-500 text-white font-mono placeholder:text-slate-600"
                       required
                     />
                   </div>
-                  <p className="text-[10px] text-slate-500 mt-1 font-mono">
+                  <p className="text-[9.5px] text-slate-500 mt-1 font-mono">
                     Prefix "#" will be formatted automatically.
                   </p>
                 </div>
 
                 {/* Tag Type Selection (Single Type per Tag) */}
                 <div>
-                  <label className="block text-xs font-bold font-mono text-slate-300 uppercase mb-2">
+                  <label className="block text-[11px] font-bold font-mono text-slate-300 uppercase mb-1.5">
                     Tag Category (Type)
                   </label>
                   <select 
                     value={formType}
                     onChange={(e) => setFormType(e.target.value as TagType)}
-                    className="w-full text-sm p-3 bg-slate-950 border border-slate-800 rounded-xl focus:outline-none focus:border-purple-500 text-white font-space font-semibold cursor-pointer"
+                    className="w-full text-xs p-2.5 bg-slate-950 border border-slate-800 rounded-xl focus:outline-none focus:border-purple-500 text-white font-space font-semibold cursor-pointer"
                   >
                     <option value="Copyright">Copyright — Karya, franchise, atau hak cipta (mis. minecraft)</option>
                     <option value="General">General — Objek, karakteristik, atau konten umum (mis. cyan eyes)</option>
@@ -831,17 +882,17 @@ export const TagAnalytics: React.FC = () => {
                 </div>
 
                 {/* Ambiguous Status Checkbox */}
-                <div className="p-4 bg-slate-950 border border-slate-800 rounded-2xl space-y-2">
-                  <label className="flex items-center gap-3 cursor-pointer select-none">
+                <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-1.5">
+                  <label className="flex items-center gap-2.5 cursor-pointer select-none">
                     <input 
                       type="checkbox"
                       checked={formIsAmbiguous}
                       onChange={(e) => setFormIsAmbiguous(e.target.checked)}
-                      className="w-4 h-4 accent-amber-500 rounded cursor-pointer"
+                      className="w-3.5 h-3.5 accent-amber-500 rounded cursor-pointer"
                     />
                     <div className="flex flex-col">
-                      <span className="text-xs font-bold text-amber-300 font-space flex items-center gap-1.5">
-                        <HelpCircle className="w-3.5 h-3.5 text-amber-400" /> Mark as Ambiguous Tag
+                      <span className="text-xs font-bold text-amber-300 font-space flex items-center gap-1">
+                        <HelpCircle className="w-3 h-3 text-amber-400" /> Mark as Ambiguous Tag
                       </span>
                       <span className="text-[10px] text-slate-400 font-sans leading-tight">
                         Aktifkan jika tag memiliki makna ganda atau memerlukan penanda khusus pada preview.
@@ -850,23 +901,87 @@ export const TagAnalytics: React.FC = () => {
                   </label>
                 </div>
 
+                {/* Live Category Preview Section (Realtime Form Preview) */}
+                <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[9.5px] font-mono font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1">
+                      <Eye className="w-3 h-3 text-purple-400" /> Live Category Preview
+                    </span>
+                    <span className="text-[8.5px] font-mono text-purple-400 bg-purple-950/60 border border-purple-800/40 px-2 py-0.5 rounded-full uppercase font-bold">
+                      Pratinjau Instan
+                    </span>
+                  </div>
+
+                  {/* Simulated Tag Pill & Type Badge */}
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border text-xs font-bold font-mono transition-all ${getTypeBadgeStyle(formType)}`}>
+                      <span>#{formName.trim() ? formName.trim().toLowerCase().replace(/^#/, "") : "tag_name"}</span>
+                      {formIsAmbiguous && (
+                        <span className="text-[9px] font-mono text-amber-400 bg-amber-950/80 px-1 py-0.2 rounded border border-amber-900/80" title="Ambiguous Tag">
+                          (?)
+                        </span>
+                      )}
+                    </span>
+
+                    <span className={`text-[9.5px] font-mono font-bold px-2 py-0.5 rounded-md border ${getTypeBadgeStyle(formType)}`}>
+                      {formType}
+                    </span>
+
+                    {formIsAmbiguous && (
+                      <span className="text-[9.5px] font-mono text-amber-400 bg-amber-950/40 border border-amber-800/40 px-2 py-0.5 rounded-md">
+                        Ambigu
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Category Target & Transfer indicator */}
+                  <div className="text-[10.5px] font-sans p-2 rounded-lg bg-slate-900/80 border border-slate-800/80 space-y-1">
+                    {editingTag && editingTag.type !== formType ? (
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-1.5 text-slate-300 font-medium flex-wrap">
+                          <span className="text-slate-500 font-mono text-[9px] uppercase">Perpindahan:</span>
+                          <span className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-bold border ${getTypeBadgeStyle(editingTag.type || "General")}`}>
+                            {editingTag.type || "General"}
+                          </span>
+                          <span className="text-purple-400 font-bold text-xs">➔</span>
+                          <span className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-bold border ${getTypeBadgeStyle(formType)}`}>
+                            {formType}
+                          </span>
+                        </div>
+                        <p className="text-[9.5px] text-cyan-400/90 font-mono leading-tight">
+                          ⚡ Tag ini akan langsung berpindah dari submenu <strong>{editingTag.type || "General"}</strong> ke submenu <strong>{formType}</strong> seketika setelah disimpan.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between text-slate-400 text-[9.5px] font-mono">
+                        <span>Kategori Tujuan: <strong className="text-white">{formType}</strong></span>
+                        <span className="text-slate-500">Submenu: {formType}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="text-[8.5px] text-slate-500 font-mono italic">
+                    * Data database tetap aman dan baru diterapkan secara permanen saat Anda menekan tombol "Save Changes".
+                  </p>
+                </div>
+
                 {/* Form Buttons */}
-                <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-800">
+                <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
                   <button 
                     type="button"
                     onClick={() => setShowAddEditModal(false)}
-                    className="py-2.5 px-5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold uppercase transition-all"
+                    className="py-2 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold uppercase transition-all"
                   >
                     Cancel
                   </button>
                   <button 
                     type="submit"
                     disabled={isSaving}
-                    className="py-2.5 px-6 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg shadow-purple-900/30 transition-all active:scale-95 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="py-2 px-5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold uppercase tracking-wider shadow-lg shadow-purple-900/30 transition-all active:scale-95 flex items-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isSaving ? (
                       <>
-                        <RefreshCw className="w-4 h-4 animate-spin" /> Saving...
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" /> Saving...
                       </>
                     ) : (
                       <>{editingTag ? "Save Changes" : "Create Tag"}</>

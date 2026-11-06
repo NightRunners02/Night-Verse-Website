@@ -58,15 +58,17 @@ import {
   User as UserIcon
 } from "lucide-react";
 import { useAppState } from "../context/AppState.js";
-import type { User, SystemSettings, BadgeDefinition, UserBadgeAward, BadgeCategory } from "../types.js";
+import type { User, SystemSettings, BadgeDefinition, UserBadgeAward, BadgeCategory, SupportTicket, TicketMessage } from "../types.js";
 import { motion } from "motion/react";
 import { DeleteConfirmationModal } from "./DeleteConfirmationModal.js";
 import { RoleBadge } from "./RoleBadge.js";
 import { TagAnalytics } from "./TagAnalytics.js";
 import { db } from "../lib/db.js";
 import { validateFaviconFile, DEFAULT_FAVICON_URL } from "../lib/favicon.js";
+import { DocumentationManagement } from "./DocumentationManagement.js";
+import { TicketCenter } from "./TicketCenter.js";
 
-type AdminTab = "overview" | "users" | "moderation" | "tags" | "reports" | "security" | "settings" | "super-admin" | "badges";
+type AdminTab = "overview" | "users" | "moderation" | "tags" | "reports" | "security" | "settings" | "super-admin" | "badges" | "docs";
 
 export const AdminWorkspace: React.FC = () => {
   const { 
@@ -86,6 +88,7 @@ export const AdminWorkspace: React.FC = () => {
   } = useAppState();
 
   const [activeSubTab, setActiveSubTab] = useState<AdminTab>("overview");
+  const [reportsView, setReportsView] = useState<"inbox" | "tickets">("inbox");
   
   // High-fidelity central Directory state (switches users accounts and paginated tags directory)
   const [directoryViewMode, setDirectoryViewMode] = useState<"users" | "tags">("users");
@@ -145,6 +148,8 @@ export const AdminWorkspace: React.FC = () => {
       setActiveSubTab("security");
     } else if (activeTab === "admin-super") {
       setActiveSubTab("super-admin");
+    } else if (activeTab === "admin-docs") {
+      setActiveSubTab("docs");
     }
   }, [activeTab]);
   
@@ -273,9 +278,18 @@ export const AdminWorkspace: React.FC = () => {
 
     // Listen to all content for moderation and stats
     loadAllAdminMetrics();
+
+    const handleTagChange = () => {
+      loadAllAdminMetrics();
+    };
+    window.addEventListener("nightverse_tags_updated", handleTagChange);
+
     // Setting up secondary periodic sync
     const interval = setInterval(loadAllAdminMetrics, 30000); // 30s heartbeat
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("nightverse_tags_updated", handleTagChange);
+    };
   }, [user, followActionCount, dbActionCount]);
 
   // Derived stats from listeners
@@ -2197,236 +2211,145 @@ export const AdminWorkspace: React.FC = () => {
         </div>
       )}
 
-      {/* 5. REPORTS MONITOR INBOX */}
+
+
+      {/* 5. REPORTS & TICKET CENTER */}
       {activeSubTab === "reports" && (
-        <div className="space-y-6" id="deck-reports-panel">
+        <div className="space-y-6 animate-fadeIn" id="deck-reports-panel">
           
-          <div className="p-6 bg-slate-950 border border-slate-900 rounded-3xl space-y-4">
-            
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-900 pb-4">
-              <div>
-                <h3 className="text-base font-extrabold font-space text-slate-100 flex items-center gap-1.5">
-                  <AlertTriangle className="w-5 h-5 text-rose-500" /> Creators Content Reports Inbox
-                </h3>
-                <p className="text-xs text-slate-400 mt-1">Investigate copyright disputes, spam, harassment claims, or sensitive content indicators filed by platform citizens.</p>
-              </div>
-
-              <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-                <div className="relative flex-1 sm:w-64">
-                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-600" />
-                   <input 
-                     type="text"
-                     placeholder="Search reports by victim/attacker/title..."
-                     value={reportQuery}
-                     onChange={(e) => setReportQuery(e.target.value)}
-                     className="w-full bg-slate-950 border border-slate-900 rounded-xl pl-9 pr-4 py-2 text-xs focus:border-rose-500 outline-none"
-                   />
-                </div>
-                <div className="flex bg-slate-900 border border-slate-850 p-1 rounded-xl">
-                {["ALL", "PENDING", "RESOLVED"].map(filterStyle => (
-                  <button 
-                    key={filterStyle}
-                    onClick={() => setReportFilter(filterStyle as any)}
-                    className={`text-[9px] font-bold py-1.5 px-3.5 rounded-lg transition-all ${
-                      reportFilter === filterStyle ? "bg-rose-600 text-white" : "text-slate-400 hover:text-white"
-                    }`}
-                  >
-                    {filterStyle}
-                  </button>
-                ))}
-              </div>
+          <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+            <div className="flex items-center gap-4">
+              <button
+                onClick={() => setReportsView("inbox")}
+                className={`px-4 py-2 rounded-xl text-xs font-bold font-space transition-all border ${
+                  reportsView === "inbox" 
+                    ? "bg-indigo-600 border-indigo-500 text-white shadow-lg" 
+                    : "bg-slate-900 border-slate-800 text-slate-400 hover:text-white"
+                }`}
+              >
+                Abuse Reports
+              </button>
+              <button
+                onClick={() => setReportsView("tickets")}
+                className={`px-4 py-2 rounded-xl text-xs font-bold font-space transition-all border ${
+                  reportsView === "tickets" 
+                    ? "bg-indigo-600 border-indigo-500 text-white shadow-lg" 
+                    : "bg-slate-900 border-slate-800 text-slate-400 hover:text-white"
+                }`}
+              >
+                Ticket Center
+              </button>
             </div>
-          </div>
 
-            {filteredReports.length === 0 ? (
-              <div className="text-center py-16 text-slate-500 text-xs">
-                No active abuse claims mapped inside reports registry.
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {filteredReports.map(rep => (
-                  <div key={rep.id} className="p-4 bg-slate-900/20 border border-slate-850 rounded-2xl flex flex-col sm:flex-row justify-between gap-4">
-                    <div className="min-w-0 space-y-1.5">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-[9px] uppercase font-mono font-black tracking-wider py-0.5 px-2 bg-rose-500/10 border border-rose-500/20 text-rose-450 rounded-full">Abuse: {rep.contentType}</span>
-                        <span className={`text-[9px] uppercase font-mono font-bold py-0.5 px-2 rounded-full border ${
-                          rep.isResolved 
-                            ? "bg-emerald-950/20 text-emerald-400 border-emerald-900/20" 
-                            : "bg-amber-955/20 text-amber-500 border-amber-900/20 animate-pulse"
-                        }`}>
-                          {rep.isResolved ? "Closed Resolved" : "Awaiting Investigation"}
-                        </span>
-                        <span className="text-[10px] text-slate-500 font-mono">Filing Date: {new Date(rep.createdAt).toLocaleDateString()}</span>
-                      </div>
-                      
-                      <h4 className="font-extrabold text-sm text-slate-200">
-                        Disputed Object title: <span className="italic">"{rep.contentTitle || rep.contentId}"</span>
-                      </h4>
-                      <p className="text-xs text-slate-400">Reporter: <span className="text-purple-300">@{rep.reporterUsername}</span></p>
-                      <p className="text-xs text-slate-350 p-2 text-rose-400 bg-rose-950/5 border border-rose-950/30 rounded-xl leading-relaxed">
-                        Claim Motive Details: "{rep.reason}"
-                      </p>
-
-                      {rep.isResolved && rep.resolutionNotes && (
-                        <div className="p-2.5 text-[11px] bg-emerald-950/10 border border-emerald-950/40 text-emerald-400 rounded-xl">
-                          <span className="font-bold underline block">Resolution Log:</span>
-                          "{rep.resolutionNotes}"
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex flex-row sm:flex-col justify-end gap-2 flex-shrink-0">
-                      {!rep.isResolved ? (
-                        <>
-                          <button 
-                            onClick={() => setActiveReportToResolve(rep)}
-                            className="p-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl font-bold font-space text-[10px] uppercase cursor-pointer"
-                          >
-                            Resolve / File Decision
-                          </button>
-                          <button 
-                            onClick={() => setContentToDeleteLog(rep)}
-                            className="p-2 border border-rose-800 text-rose-400 hover:bg-rose-950 rounded-xl text-[10px] font-mono cursor-pointer"
-                          >
-                            Purge Content
-                          </button>
-                        </>
-                      ) : (
-                        <button 
-                          disabled
-                          className="p-2 text-slate-600 border border-slate-900 text-[10px] cursor-not-allowed"
-                        >
-                          Archive Dossier Closed
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Resolve filing notes write drawer */}
-            {activeReportToResolve && (
-              <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl space-y-3.5 animate-fadeIn">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-mono text-rose-400 font-bold uppercase block">File Decision Memo for Report #{activeReportToResolve.id}</span>
-                  <button onClick={() => setActiveReportToResolve(null)} className="text-[10px] text-slate-500">Cancel</button>
-                </div>
-                
-                <input 
-                  type="text"
-                  placeholder="Memo details e.g. Warnings dispatched, content review validated as harmless..."
-                  value={reportResolutionText}
-                  onChange={(e) => setReportResolutionText(e.target.value)}
-                  className="w-full text-xs py-3 px-4 bg-slate-950 border border-slate-850 rounded-xl focus:outline-none focus:border-rose-500 text-slate-350"
-                  id="report-resolution-notes"
-                  required
-                />
-                
-                <button 
-                  onClick={() => handleResolveReport(activeReportToResolve.id, reportResolutionText)}
-                  className="py-2.5 px-6 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-bold uppercase cursor-pointer"
+            {reportsView === "inbox" && (
+              <div className="flex items-center gap-3">
+                <select
+                  value={reportFilter}
+                  onChange={(e) => setReportFilter(e.target.value as any)}
+                  className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-300 font-mono"
                 >
-                  Conclude Investigation Register
-                </button>
+                  <option value="ALL">All Reports</option>
+                  <option value="PENDING">Pending Only</option>
+                  <option value="RESOLVED">Resolved Only</option>
+                </select>
               </div>
             )}
-
           </div>
 
+          {reportsView === "tickets" ? (
+            <TicketCenter />
+          ) : (
+            <div className="bg-slate-950 border border-slate-900 rounded-3xl p-6 overflow-x-auto custom-scrollbar">
+              <table className="w-full text-left text-xs border-collapse min-w-[800px]">
+                <thead>
+                  <tr className="border-b border-slate-800 text-[10px] uppercase font-mono text-slate-500">
+                    <th className="py-3 px-3">Date</th>
+                    <th className="py-3 px-3">Reporter</th>
+                    <th className="py-3 px-3">Target Content</th>
+                    <th className="py-3 px-3">Reason / Details</th>
+                    <th className="py-3 px-3 text-right">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-850">
+                  {filteredReports.map((report) => (
+                    <tr key={report.id} className="hover:bg-slate-900/40 transition-colors group">
+                      <td className="py-4 px-3 font-mono text-slate-500">
+                        {new Date(report.createdAt).toLocaleDateString()}
+                      </td>
+                      <td className="py-4 px-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-space font-bold text-slate-200">@{report.reporterUsername}</span>
+                          <span className="text-[9px] font-mono text-slate-500">ID: {report.reporterId}</span>
+                        </div>
+                      </td>
+                      <td className="py-4 px-3">
+                        <div className="flex flex-col">
+                          <span className="font-bold text-indigo-400">{report.contentTitle || "Untitled Content"}</span>
+                          <span className="text-[10px] font-mono text-slate-500 uppercase">{report.contentType} ({report.contentId})</span>
+                        </div>
+                      </td>
+                      <td className="py-4 px-3 text-slate-400 max-w-xs truncate" title={report.reason}>
+                        {report.reason}
+                      </td>
+                      <td className="py-4 px-3 text-right">
+                        <button
+                          onClick={() => {
+                            if (!report.isResolved) {
+                              handleResolveReport(report.id, "Manually reviewed and cleared by operator.");
+                            }
+                          }}
+                          className={`px-3 py-1 rounded-lg font-bold text-[10px] uppercase transition-all ${
+                            report.isResolved 
+                              ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 cursor-default" 
+                              : "bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-emerald-500 hover:text-white hover:border-emerald-500 cursor-pointer"
+                          }`}
+                        >
+                          {report.isResolved ? "RESOLVED" : "MARK RESOLVED"}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredReports.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="py-12 text-center text-slate-600 font-mono italic">
+                        No platform abuse reports matching current criteria found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
-      {/* 5b. BADGE MANAGEMENT SYSTEM */}
+      {/* 5. BADGE MANAGEMENT SYSTEM */}
       {activeSubTab === "badges" && (
-        <div className="space-y-6 animate-in fade-in duration-300" id="deck-badges-panel">
+        <div className="space-y-6 animate-fadeIn" id="deck-badges-panel">
           
-          {/* Header & Sub-tab Navigation */}
-          <div className="bg-slate-900/50 border border-slate-800 rounded-3xl p-6 backdrop-blur-xl space-y-4 shadow-xl">
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2.5 flex-wrap">
-                  <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-                    <ShieldCheck className="w-4 h-4" />
-                  </div>
-                  <h3 className="text-lg font-black font-space text-white tracking-tight">
-                    Badge Management System
-                  </h3>
-
-                  {/* Hierarchical Authority Indicator */}
-                  {user?.role === "SUPER_ADMIN" ? (
-                    <span className="px-3 py-1 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 text-[10px] font-mono font-bold flex items-center gap-1.5 shadow-sm">
-                      <ShieldAlert className="w-3 h-3" /> Root Super Admin • Otoritas Penuh (Tier 0 - 5)
-                    </span>
-                  ) : user?.role === "ADMIN" ? (
-                    <span className="px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/30 text-purple-400 text-[10px] font-mono font-bold flex items-center gap-1.5 shadow-sm">
-                      <ShieldCheck className="w-3 h-3" /> Administrator • Akses Sub-Admin (Tier 0 - 3)
-                    </span>
-                  ) : (
-                    <span className="px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-[10px] font-mono font-bold flex items-center gap-1.5 shadow-sm">
-                      <Shield className="w-3 h-3" /> Moderator • Akses Sub-Moderator (Tier 0 - 2)
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-slate-400 font-sans">
-                  Sistem otorisasi dan pengelolaan badge berbasis hierarki role, permission tier, dan audit trail transparan.
-                </p>
-              </div>
-
-              {/* Super Admin Action: Create New Badge */}
-              {user?.role === "SUPER_ADMIN" && (
-                <button
-                  type="button"
-                  onClick={() => setCreateBadgeModalOpen(true)}
-                  className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-space font-bold uppercase tracking-wider text-xs rounded-xl transition-all shadow-lg shadow-rose-900/30 active:scale-95 flex items-center gap-2 cursor-pointer self-start lg:self-auto"
-                >
-                  <Plus className="w-4 h-4" /> Create New Badge
-                </button>
-              )}
-            </div>
-
-            {/* Sub-section Switcher */}
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setBadgeSubSection("clearance")}
-                className={`px-4 py-2 rounded-xl text-xs font-bold font-space uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
-                  badgeSubSection === "clearance"
-                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/30"
-                    : "bg-slate-950/60 text-slate-400 hover:text-white border border-slate-800"
-                }`}
-              >
-                <Key className="w-3.5 h-3.5" /> User Badge Clearance & Unlock
-              </button>
-              <button
-                type="button"
-                onClick={() => setBadgeSubSection("catalog")}
-                className={`px-4 py-2 rounded-xl text-xs font-bold font-space uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
-                  badgeSubSection === "catalog"
-                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/30"
-                    : "bg-slate-950/60 text-slate-400 hover:text-white border border-slate-800"
-                }`}
-              >
-                <Award className="w-3.5 h-3.5" /> Badge Catalog & Definitions ({allSystemBadges.length})
-              </button>
-              <button
-                type="button"
-                onClick={() => setBadgeSubSection("history")}
-                className={`px-4 py-2 rounded-xl text-xs font-bold font-space uppercase tracking-wider transition-all cursor-pointer flex items-center gap-2 ${
-                  badgeSubSection === "history"
-                    ? "bg-indigo-600 text-white shadow-lg shadow-indigo-900/30"
-                    : "bg-slate-950/60 text-slate-400 hover:text-white border border-slate-800"
-                }`}
-              >
-                <FileCheck className="w-3.5 h-3.5" /> Audit Trail & History ({allBadgeAwards.length})
-              </button>
-            </div>
+          <div className="flex items-center gap-4 p-4 bg-slate-900/40 border border-slate-800 rounded-2xl backdrop-blur-md mb-6">
+            <button
+              onClick={() => setBadgeSubSection("clearance")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold font-space transition-all ${badgeSubSection === "clearance" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"}`}
+            >
+              Clearance Management
+            </button>
+            <button
+              onClick={() => setBadgeSubSection("catalog")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold font-space transition-all ${badgeSubSection === "catalog" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"}`}
+            >
+              Badge Catalog
+            </button>
+            <button
+              onClick={() => setBadgeSubSection("history")}
+              className={`px-4 py-2 rounded-xl text-xs font-bold font-space transition-all ${badgeSubSection === "history" ? "bg-indigo-600 text-white shadow-lg" : "text-slate-400 hover:text-white"}`}
+            >
+              Audit History
+            </button>
           </div>
 
-          {/* SUB-SECTION 1: USER BADGE CLEARANCE & UNLOCK */}
           {badgeSubSection === "clearance" && (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              
               {/* Left Column: User Directory Selector (4 cols) */}
               <div className="lg:col-span-4 bg-slate-900/40 border border-slate-800 rounded-3xl p-5 space-y-4 backdrop-blur-md flex flex-col max-h-[750px]">
                 <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -2443,7 +2366,6 @@ export const AdminWorkspace: React.FC = () => {
                   </span>
                 </div>
 
-                {/* User Search Input */}
                 <div className="relative">
                   <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-2.5" />
                   <input
@@ -2455,7 +2377,6 @@ export const AdminWorkspace: React.FC = () => {
                   />
                 </div>
 
-                {/* User List scrollable */}
                 <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
                   {filteredUsers.length === 0 ? (
                     <div className="text-center py-12 text-slate-600 font-mono text-xs">
@@ -2522,7 +2443,6 @@ export const AdminWorkspace: React.FC = () => {
                   </div>
                 ) : (
                   <>
-                    {/* User Header Profile Card */}
                     <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                       <div className="flex items-center gap-4">
                         <img
@@ -2550,15 +2470,11 @@ export const AdminWorkspace: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Current Badges Acquired */}
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <span className="text-[10px] font-mono text-indigo-400 uppercase tracking-widest font-black flex items-center gap-1.5">
                           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                           Badge yang Saat Ini Dimiliki ({inspectedUser.profile?.badges?.length || 0})
-                        </span>
-                        <span className="text-[9px] font-mono text-slate-500 italic">
-                          Accolade badge tidak otomatis mengubah hak akses RBAC
                         </span>
                       </div>
 
@@ -2582,7 +2498,6 @@ export const AdminWorkspace: React.FC = () => {
                                   <button
                                     type="button"
                                     onClick={() => handleRevokeBadge(inspectedUser.id, bName)}
-                                    title={`Cabut badge ${bName}`}
                                     className="w-4 h-4 rounded-full bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-white flex items-center justify-center transition-all cursor-pointer"
                                   >
                                     <X className="w-2.5 h-2.5" />
@@ -2595,15 +2510,11 @@ export const AdminWorkspace: React.FC = () => {
                       </div>
                     </div>
 
-                    {/* Badge Unlock Matrix */}
                     <div className="space-y-3">
                       <div className="flex items-center justify-between border-b border-slate-800 pb-2">
                         <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-black flex items-center gap-1.5">
                           <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
                           Katalog Badge & Status Unlock untuk @{inspectedUser.username}
-                        </span>
-                        <span className="text-[9px] font-mono text-slate-500">
-                          {allSystemBadges.length} Jenis Tersedia
                         </span>
                       </div>
 
@@ -2639,8 +2550,6 @@ export const AdminWorkspace: React.FC = () => {
                                       </span>
                                     </div>
                                   </div>
-
-                                  {/* Tier Badge */}
                                   <span className={`px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase tracking-wider ${
                                     b.tier >= 5 ? "bg-rose-500/20 text-rose-300 border border-rose-500/30" :
                                     b.tier >= 4 ? "bg-purple-500/20 text-purple-300 border border-purple-500/30" :
@@ -2651,13 +2560,11 @@ export const AdminWorkspace: React.FC = () => {
                                     {b.tier === 5 ? "ROOT ADMIN" : b.tier === 4 ? "ADMIN" : b.tier === 3 ? "MOD" : `TIER ${b.tier}`}
                                   </span>
                                 </div>
-
                                 <p className="text-[11px] text-slate-400 font-sans line-clamp-2 leading-relaxed">
                                   {b.description}
                                 </p>
                               </div>
 
-                              {/* Action Button: States LOCKED / UNLOCKING / UNLOCKED */}
                               <div className="pt-3 mt-3 border-t border-slate-900 flex items-center justify-between gap-2">
                                 {isAlreadyUnlocked ? (
                                   <button
@@ -2671,7 +2578,7 @@ export const AdminWorkspace: React.FC = () => {
                                   <div className="w-full py-2 bg-slate-900/60 border border-slate-850 text-slate-500 font-mono text-[9px] uppercase rounded-xl flex items-center justify-center gap-1.5 cursor-not-allowed text-center">
                                     <Lock className="w-3 h-3 text-slate-600" />
                                     <span>
-                                      {b.tier >= 5 ? "Memerlukan Super Admin" : b.tier >= 4 ? "Memerlukan Super Admin" : "Memerlukan Admin"}
+                                      {b.tier >= 4 ? "Memerlukan Super Admin" : "Memerlukan Admin"}
                                     </span>
                                   </div>
                                 ) : (
@@ -2698,6 +2605,7 @@ export const AdminWorkspace: React.FC = () => {
               </div>
             </div>
           )}
+
 
           {/* SUB-SECTION 2: BADGE CATALOG & DEFINITIONS */}
           {badgeSubSection === "catalog" && (
@@ -2856,9 +2764,9 @@ export const AdminWorkspace: React.FC = () => {
               </div>
             </div>
           )}
-
         </div>
       )}
+
 
       {/* 6. SECURITY LOGS & AUDIT TRAIL */}
       {activeSubTab === "security" && (
@@ -3677,6 +3585,21 @@ export const AdminWorkspace: React.FC = () => {
 
                 </div>
 
+                <div className="pt-3 border-t border-slate-800/80">
+                  <label className="flex items-center gap-3 cursor-pointer text-slate-200 select-none">
+                    <input 
+                      type="checkbox"
+                      checked={localSettings.creatorMasterpiecesBlur || false}
+                      onChange={(e) => setLocalSettings(prev => ({ ...prev, creatorMasterpiecesBlur: e.target.checked }))}
+                      className="w-4 h-4 rounded border-slate-800 bg-slate-900 text-purple-600 focus:ring-0 cursor-pointer"
+                    />
+                    <div>
+                      <span className="font-bold text-white block font-space text-xs">Creator Masterpieces Blur Effect</span>
+                      <span className="text-[10px] text-slate-400 block font-sans mt-0.5">ON: Seluruh media visual pada kartu Curated Creator Masterpieces menjadi blur. OFF: Normal.</span>
+                    </div>
+                  </label>
+                </div>
+
               </div>
 
             </div>
@@ -3693,6 +3616,13 @@ export const AdminWorkspace: React.FC = () => {
 
           </div>
 
+        </div>
+      )}
+
+      {/* 8. DOCUMENTATION CENTER MANAGEMENT */}
+      {activeSubTab === "docs" && (
+        <div className="space-y-6" id="deck-docs-panel">
+          <DocumentationManagement />
         </div>
       )}
 
@@ -3762,25 +3692,21 @@ export const AdminWorkspace: React.FC = () => {
         }
       />
 
-      <DeleteConfirmationModal 
-        isOpen={Boolean(tagToPurge)}
-        onClose={() => setTagToPurge(null)}
-        onConfirm={() => {
-          if (!tagToPurge) return;
-          handleHardPurgeTagAsset(tagToPurge.id, tagToPurge.name);
-          setTagToPurge(null);
-        }}
-        title="Move Tag to Purge Vault"
-        warningText={`You are about to move #${tagToPurge?.name} to the administrative purge vault. This will remove it from all platform indices, but you can restore it later from the supervisor vault.`}
-        itemDetails={
-          tagToPurge ? (
-            <div className="flex flex-col gap-1 overflow-hidden">
-              <span className="text-sm font-bold text-slate-200">Vault Item: #{tagToPurge.name}</span>
-              <span className="text-xs font-mono text-cyan-400">Status: Pending Super-Purge</span>
-            </div>
-          ) : null
-        }
-      />
+
+      {tagToPurge && (
+        <DeleteConfirmationModal 
+          isOpen={true}
+          onClose={() => setTagToPurge(null)}
+          onConfirm={() => {
+            if (tagToPurge) {
+               handleHardPurgeTagAsset(tagToPurge.id, tagToPurge.name);
+               setTagToPurge(null);
+            }
+          }}
+          title="Move Tag to Purge Vault"
+          warningText="Are you sure you want to move this tag to the purge vault?"
+        />
+      )}
 
       <DeleteConfirmationModal 
         isOpen={Boolean(tagToDelete)}

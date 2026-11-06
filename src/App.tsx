@@ -59,6 +59,7 @@ const AppRouter: React.FC = () => {
       case "admin-users":
       case "admin-tags":
       case "admin-logs":
+      case "admin-docs":
         return <AdminWorkspace />;
       default:
         return <ExploreFeed />;

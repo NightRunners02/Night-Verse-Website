@@ -1,0 +1,661 @@
+893:    <div className="space-y-6 text-slate-100 font-sans overflow-y-auto custom-scrollbar" id="admin-workspace-premium">
+896:      <div className="p-6 bg-slate-900/60 border border-slate-850 rounded-3xl relative overflow-hidden backdrop-blur-md">
+897:        <div className="absolute top-0 right-0 w-80 h-32 bg-purple-500/10 blur-[100px] rounded-full pointer-events-none"></div>
+898:        <div className="absolute bottom-0 left-12 w-64 h-24 bg-cyan-500/10 blur-[80px] rounded-full pointer-events-none"></div>
+900:        <div className="relative flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+901:          <div className="space-y-1.5">
+902:            <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-rose-500/10 border border-rose-500/20 text-rose-400 font-mono text-[10px] uppercase font-semibold rounded-full select-none tracking-widest">
+913:          <div className="flex flex-wrap items-center gap-2">
+914:            <button 
+933:        <div className="space-y-6" id="deck-telemetry-panel">
+936:          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+938:            <div className="p-5 bg-slate-900/40 border border-slate-900 rounded-2xl">
+939:              <span className="text-[9px] text-slate-500 uppercase tracking-widest font-mono font-bold block">Total Registered Users</span>
+940:              <div className="flex items-baseline gap-2 mt-2.5">
+941:                <span className="text-2xl md:text-3xl font-black font-space text-slate-100">{dbStats.totalUsers}</span>
+942:                <span className="text-[10px] text-emerald-400 font-mono font-bold">+{dbStats.newUsersToday} today</span>
+946:            <div className="p-5 bg-slate-900/40 border border-slate-900 rounded-2xl">
+947:              <span className="text-[9px] text-slate-500 uppercase tracking-widest font-mono font-bold block">Active Session Users</span>
+948:              <div className="flex items-baseline gap-2 mt-2.5">
+949:                <span className="text-2xl md:text-3xl font-black font-space text-emerald-400">{dbStats.activeUsers}</span>
+950:                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 inline-block animate-ping"></span>
+954:            <div className="p-5 bg-slate-900/40 border border-slate-900 rounded-2xl">
+955:              <span className="text-[9px] text-slate-500 uppercase tracking-widest font-mono font-bold block">Content Publications</span>
+956:              <div className="flex items-baseline gap-2 mt-2.5">
+957:                <span className="text-2xl md:text-3xl font-black font-space text-purple-400">{dbStats.totalBlogs + dbStats.totalPhotos + dbStats.totalVideos}</span>
+958:                <span className="text-[10px] text-slate-500 font-mono">B/P/V split</span>
+962:            <div className="p-5 bg-slate-900/40 border border-slate-900 rounded-2xl">
+963:              <span className="text-[9px] text-slate-500 uppercase tracking-widest font-mono font-bold block">Platform Tag Footprint</span>
+964:              <div className="flex items-baseline gap-2 mt-2.5">
+965:                <span className="text-2xl md:text-3xl font-black font-space text-cyan-400">{dbStats.totalTags}</span>
+966:                <span className="text-[10px] text-slate-500 font-mono">hashtags</span>
+970:            <div className="p-5 bg-slate-900/40 border border-slate-900 rounded-2xl col-span-2 md:col-span-1">
+971:              <div className="flex items-start justify-between">
+972:                <div>
+973:                  <span className="text-[9px] text-slate-500 uppercase tracking-widest font-mono font-bold block">Server Sandbox Storage</span>
+974:                  <div className="flex items-baseline gap-2 mt-2.5">
+975:                    <span className={`text-2xl md:text-3xl font-black font-space ${Number((dbStats as any).storagePercent) > 90 ? 'text-rose-500' : 'text-indigo-400'}`}>
+978:                    <span className="text-[10px] text-slate-500 font-mono">/ 1,048,576 MB</span>
+981:                <div className="flex flex-col items-end gap-2">
+982:                   <div className={`px-2 py-1 rounded-md text-[9px] font-mono font-bold ${Number((dbStats as any).storagePercent) > 90 ? 'bg-rose-950 text-rose-400' : 'bg-slate-800 text-slate-400'}`}>
+985:                   <button 
+995:              <div className="mt-4 h-1 w-full bg-slate-950 rounded-full overflow-hidden">
+996:                <div 
+1005:          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+1008:            <div className="lg:col-span-2 bg-slate-950 border border-slate-900 rounded-3xl p-6 space-y-6">
+1010:              <div>
+1011:                <span className="text-[9px] font-mono uppercase tracking-widest text-purple-500 font-bold block">User growth & publications volume timeline</span>
+1016:              <div className="relative h-64 w-full bg-slate-900/20 border border-slate-900/70 rounded-2xl flex flex-col justify-between p-4">
+1019:                <div className="absolute inset-x-0 top-1/4 border-b border-slate-900/40 pointer-events-none"></div>
+1020:                <div className="absolute inset-x-0 top-2/4 border-b border-slate-900/40 pointer-events-none"></div>
+1021:                <div className="absolute inset-x-0 top-3/4 border-b border-slate-900/40 pointer-events-none"></div>
+1047:                <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 pt-3 border-t border-slate-900/50">
+1048:                  <span>Mon (23)</span>
+1049:                  <span>Tue (38)</span>
+1050:                  <span>Wed (64)</span>
+1051:                  <span>Thu (91)</span>
+1052:                  <span>Fri ({dbStats.totalUsers} Active)</span>
+1058:              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+1060:                <div className="p-4 bg-slate-900/30 border border-slate-900 rounded-2xl flex items-center gap-6">
+1062:                  <div className="relative w-20 h-20 flex-shrink-0">
+1072:                    <div className="absolute inset-0 flex flex-col items-center justify-center text-[10px] select-none text-slate-400">
+1073:                      <span className="font-bold text-slate-250">Split</span>
+1077:                  <div className="space-y-1.5 flex-1 text-xs">
+1078:                    <span className="text-[10px] text-slate-500 block">Content Distribution</span>
+1079:                    <div className="flex items-center justify-between">
+1080:                      <span className="flex items-center gap-1.5 text-slate-350"><span className="w-2 h-2 rounded-full bg-purple-500"></span> Photos</span>
+1081:                      <span className="font-mono text-slate-400">{dbStats.totalPhotos} ({Math.round((dbStats.totalPhotos/Math.max(1, dbStats.totalBlogs + dbStats.totalPhotos + dbStats.totalVideos))*100)}%)</span>
+1083:                    <div className="flex items-center justify-between">
+1084:                      <span className="flex items-center gap-1.5 text-slate-350"><span className="w-2 h-2 rounded-full bg-cyan-400"></span> Blogs</span>
+1085:                      <span className="font-mono text-slate-400">{dbStats.totalBlogs} ({Math.round((dbStats.totalBlogs/Math.max(1, dbStats.totalBlogs + dbStats.totalPhotos + dbStats.totalVideos))*100)}%)</span>
+1087:                    <div className="flex items-center justify-between">
+1088:                      <span className="flex items-center gap-1.5 text-slate-350"><span className="w-2 h-2 rounded-full bg-indigo-500"></span> Videos</span>
+1089:                      <span className="font-mono text-slate-400">{dbStats.totalVideos} ({Math.round((dbStats.totalVideos/Math.max(1, dbStats.totalBlogs + dbStats.totalPhotos + dbStats.totalVideos))*100)}%)</span>
+1095:                <div className="p-4 bg-slate-900/30 border border-slate-900 rounded-2xl flex flex-col justify-between gap-2.5">
+1096:                  <div className="flex items-center justify-between">
+1097:                    <span className="text-[10px] text-slate-500 uppercase font-mono font-bold">Review Pipeline Ingests</span>
+1098:                    <span className="text-[10px] text-rose-400 bg-rose-500/10 border border-rose-500/20 py-0.5 px-2 rounded-full font-mono">{dbStats.pendingReviews} pending</span>
+1100:                  <div className="space-y-1.5">
+1101:                    <div className="flex items-center justify-between text-xs">
+1102:                      <span className="text-slate-400">Approved Platform Content</span>
+1103:                      <span className="text-slate-100 font-mono">{dbStats.approvedContent} posts</span>
+1105:                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden">
+1106:                      <div className="bg-emerald-500 h-full rounded-full" style={{ width: "92%" }}></div>
+1109:                  <div className="space-y-1.5">
+1110:                    <div className="flex items-center justify-between text-xs">
+1111:                      <span className="text-slate-400">Rejected & Filtered Out</span>
+1112:                      <span className="text-slate-100 font-mono">{dbStats.rejectedContent} posts</span>
+1114:                    <div className="w-full h-1.5 bg-slate-950 rounded-full overflow-hidden">
+1115:                      <div className="bg-rose-500 h-full rounded-full" style={{ width: "8%" }}></div>
+1125:            <div className="bg-slate-950 border border-slate-900 rounded-3xl p-6 h-full flex flex-col space-y-4">
+1126:              <div>
+1127:                <span className="text-[9px] uppercase font-mono tracking-widest text-emerald-400 font-black flex items-center gap-1">
+1128:                  <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-ping"></span> Live SSE broadcasts receiver
+1133:              <div className="bg-slate-900/10 border border-slate-900/60 rounded-2xl p-4 overflow-y-auto max-h-[380px] font-mono space-y-3" id="sse-telemetry-feed">
+1138:                    <div key={log.id} className="text-[10px] leading-relaxed border-b border-slate-950 pb-2.5 last:border-0 hover:bg-slate-950/20 p-1.5 rounded transition-all">
+1139:                      <div className="flex items-center justify-between col-span-2">
+1140:                        <span className="text-purple-400 font-bold">[{log.action.toUpperCase()}]</span>
+1141:                        <span className="text-[8px] text-slate-600">{new Date(log.timestamp).toLocaleTimeString()}</span>
+1160:        <div className="space-y-6" id="deck-directory-panel">
+1163:          <div className="flex bg-slate-950 border border-slate-900 rounded-2xl p-1 w-full sm:w-80 select-none">
+1164:            <button 
+1176:            <button 
+1191:            <div className="p-6 bg-slate-950 border border-slate-900 rounded-3xl space-y-4 animate-fadeIn">
+1193:            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+1194:              <div>
+1202:              <div className="w-full sm:w-80 relative">
+1215:            <div className="overflow-x-auto">
+1220:                      <div 
+1258:                            <div className="flex items-center">
+1259:                              <div 
+1272:                            <div className="flex items-center gap-3">
+1278:                              <div>
+1279:                                <div className="flex items-center gap-1.5">
+1280:                                  <span className="font-bold text-slate-200">@{usr.username}</span>
+1281:                                  {usr.role === "SUPER_ADMIN" && <span className="text-[8px] bg-red-950 text-red-400 px-1.5 py-0.5 rounded font-mono font-bold">ROOT</span>}
+1288:                            <span className={`inline-block text-[9px] font-mono font-black py-0.5 px-2 rounded-full border ${
+1310:                             <div className="flex items-center justify-end gap-1.5">
+1311:                                <button
+1321:                                <button
+1330:                                <button
+1352:                <div className="mt-6 flex items-center justify-between p-4 bg-slate-900/50 border border-slate-800 rounded-2xl animate-in fade-in slide-in-from-bottom duration-300">
+1353:                   <div className="flex items-center gap-3">
+1354:                      <span className="text-[11px] font-mono font-bold text-cyan-400 uppercase">
+1358:                      <div className="flex items-center gap-3">
+1359:                        <button
+1376:                        <button
+1397:                        <button
+1415:            <div className="p-6 bg-slate-950 border border-slate-850 rounded-3xl space-y-4 animate-fadeIn">
+1416:              <div className="flex items-center justify-between border-b border-slate-900 pb-3">
+1418:                <button onClick={() => setInspectedUser(null)} className="text-xs text-slate-500 hover:text-white">Close Dossier</button>
+1421:              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-xs">
+1423:                <div className="text-center p-4 bg-slate-900/10 border border-slate-900 rounded-2xl flex flex-col items-center space-y-3">
+1425:                  <div>
+1429:                  <div className="flex flex-wrap gap-2 justify-center">
+1430:                    <span className="py-0.5 px-2 bg-slate-950 border border-slate-850 rounded font-mono text-[9px]">ID: {inspectedUser.id}</span>
+1431:                    <span className="py-0.5 px-2 bg-slate-950 border border-slate-850 rounded font-mono text-[9px] capitalize">Role: {inspectedUser.role}</span>
+1435:                <div className="md:col-span-2 space-y-4">
+1436:                  <div className="grid grid-cols-2 gap-4">
+1437:                    <div className="p-3 bg-slate-900/10 rounded-xl space-y-1">
+1438:                      <span className="text-[10px] text-slate-500 uppercase">Creator Bio Description</span>
+1441:                    <div className="p-3 bg-slate-900/10 rounded-xl space-y-1">
+1442:                      <span className="text-[10px] text-slate-500 uppercase">Design Specialties</span>
+1447:                  <div className="grid grid-cols-3 gap-4 font-mono text-center text-[11px]">
+1448:                    <div className="p-2 bg-slate-950 border border-slate-900 rounded-xl">
+1449:                      <span className="text-[9px] text-slate-500 block">WEBSITE/LINK</span>
+1452:                    <div className="p-2 bg-slate-950 border border-slate-900 rounded-xl">
+1453:                      <span className="text-[9px] text-slate-500 block">WORKPLACE</span>
+1454:                      <span className="text-slate-300">{inspectedUser.profile?.location || "Cosmic Hub"}</span>
+1456:                    <div className="p-2 bg-slate-950 border border-slate-900 rounded-xl">
+1457:                      <span className="text-[9px] text-slate-500 block">MEMBER SINCE</span>
+1458:                      <span className="text-slate-400">June 2026</span>
+1462:                  <div className="p-3 bg-slate-900/15 border border-slate-900 rounded-2xl flex items-center justify-between">
+1463:                    <div className="space-y-0.5">
+1464:                      <span className="text-[10px] uppercase font-bold text-rose-400">CRITICAL ACCOUNT SUSPENSION GATE</span>
+1467:                    <button 
+1490:        <div className="space-y-6" id="deck-moderation-panel">
+1492:          <div className="p-6 bg-slate-950 border border-slate-900 rounded-3xl space-y-4">
+1494:            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-900 pb-4">
+1495:              <div>
+1502:              <div className="flex items-center gap-3 w-full sm:w-auto">
+1503:                <div className="relative flex-1 sm:w-64">
+1513:                <div className="px-3.5 py-1 bg-slate-900 rounded-xl font-mono text-[10.5px] font-bold text-rose-400 whitespace-nowrap">
+1520:              <div className="text-center py-20 bg-slate-900/10 border border-slate-900 border-dashed rounded-3xl select-none max-w-lg mx-auto">
+1528:              <div className="space-y-6">
+1532:                  <div className="space-y-3">
+1533:                    <span className="text-[10px] font-mono uppercase tracking-wider text-cyan-400 font-black block border-l-2 border-cyan-400 pl-2">Articles awaiting print validation ({filteredPendingBlogs.length})</span>
+1534:                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+1536:                        <div key={b.id} className="p-4 bg-slate-900/30 border border-slate-850 rounded-2xl flex flex-col justify-between space-y-3">
+1537:                          <div className="space-y-1.5">
+1543:                            <div className="flex gap-2 font-mono text-[10px] pt-3 border-t border-slate-900">
+1544:                            <button 
+1550:                            <button 
+1556:                            <button 
+1571:                  <div className="space-y-3 pt-3">
+1572:                    <span className="text-[10px] font-mono uppercase tracking-wider text-purple-400 font-black block border-l-2 border-purple-500 pl-2 font-space">Photos pending portfolio exhibit ({filteredPendingPhotos.length})</span>
+1573:                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+1575:                        <div key={p.id} className="p-4 bg-slate-900/30 border border-slate-850 rounded-2xl flex gap-4">
+1577:                          <div className="flex-1 min-w-0 flex flex-col justify-between">
+1578:                            <div>
+1583:                            <div className="flex gap-1.5 font-mono text-[9px] pt-2">
+1584:                              <button 
+1590:                              <button 
+1596:                              <button 
+1612:                  <div className="space-y-3 pt-3">
+1613:                    <span className="text-[10px] font-mono uppercase tracking-wider text-indigo-400 font-black block border-l-2 border-indigo-500 pl-2 font-space">AV reels & loop files awaiting encoding ({filteredPendingVideos.length})</span>
+1614:                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+1616:                        <div key={v.id} className="p-4 bg-slate-900/30 border border-slate-850 rounded-2xl flex gap-4">
+1617:                          <div className="w-24 h-20 bg-slate-900 rounded-xl overflow-hidden relative flex-shrink-0">
+1619:                            <span className="absolute inset-0 flex items-center justify-center text-xs">▶</span>
+1621:                          <div className="flex-1 min-w-0 flex flex-col justify-between">
+1622:                            <div>
+1627:                            <div className="flex gap-1.5 font-mono text-[9px] pt-2">
+1628:                              <button 
+1634:                              <button 
+1640:                              <button 
+1659:              <div className={`mt-6 p-5 border rounded-2xl space-y-3.5 animate-fadeIn ${
+1662:                <div className="flex items-center justify-between">
+1663:                  <span className={`text-[10px] font-mono font-black uppercase tracking-wider flex items-center gap-1.5 ${
+1676:                  <button onClick={() => setActiveRejectTarget(null)} className="text-[10px] text-slate-500 hover:text-white">Cancel</button>
+1690:                <button 
+1708:        <div className="space-y-6 animate-fadeIn" id="deck-super-admin-panel">
+1711:          <div className="p-6 bg-slate-900/40 border border-slate-850 rounded-3xl relative overflow-hidden text-left">
+1712:            <div className="absolute top-0 right-0 w-80 h-32 bg-indigo-500/10 blur-[90px] rounded-full pointer-events-none"></div>
+1714:            <div className="relative flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+1715:              <div className="space-y-1.5">
+1716:                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 font-mono text-[10px] uppercase font-bold rounded-full select-none tracking-widest">
+1728:              <div className="flex gap-3 font-mono text-xs">
+1729:                <div className="p-3 bg-slate-950/60 border border-slate-900 rounded-2xl text-center min-w-28 space-y-0.5">
+1730:                  <span className="text-[9px] text-slate-505 block uppercase font-mono">Banned/Blocked</span>
+1731:                  <span className="text-sm font-black text-rose-451">{blockedTagsList.length} Labels</span>
+1733:                <div className="p-3 bg-slate-950/60 border border-slate-900 rounded-2xl text-center min-w-28 space-y-0.5">
+1734:                  <span className="text-[9px] text-slate-505 block uppercase font-mono">Purged History</span>
+1735:                  <span className="text-sm font-black text-cyan-400">{deletedTagsBackup.length} Purges</span>
+1741:          <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+1744:            <div className="xl:col-span-2 bg-slate-950 border border-slate-900 rounded-3xl p-6 space-y-5">
+1746:              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+1747:                <div className="text-left">
+1754:                <div className="w-full sm:w-60 relative text-left">
+1767:              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5" id="taxonomy-nodes-grid">
+1769:                  <div className="col-span-2 text-center py-12 text-slate-555 font-mono text-xs">
+1777:                      <div 
+1788:                        <div className="flex items-start justify-between min-w-0 gap-2">
+1789:                          <div className="min-w-0 text-left">
+1790:                            <span className={`font-mono font-bold flex items-center gap-1 text-sm ${isBanned ? "text-rose-500" : "text-slate-200"}`}>
+1793:                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+1794:                              <span className="text-[9px] text-slate-500 font-mono">Author ID: @{tag.mostActiveUsername || "nightmaster"}</span>
+1796:                                <span className="text-[9px] font-black bg-rose-955/20 text-rose-400 border border-rose-900/30 px-1.5 py-0.5 rounded uppercase tracking-wider">
+1800:                              <span className={`text-[9px] font-bold px-1 rounded bg-slate-950/50 ${(tag.growthDaily ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+1805:                          <span className="text-[10px] font-mono text-slate-400 bg-slate-950 border border-slate-900 px-2 py-0.5 rounded-lg select-none whitespace-nowrap leading-none mt-1">
+1811:                        <div className="grid grid-cols-3 gap-1 text-center font-mono text-[9px] text-slate-400">
+1812:                          <div className="p-1 bg-slate-950/40 border border-slate-900/60 rounded">
+1813:                            <span className="text-slate-500 block uppercase font-mono">Blogs</span>
+1816:                          <div className="p-1 bg-slate-950/40 border border-slate-900/60 rounded">
+1817:                            <span className="text-slate-555 block uppercase font-mono">Photos</span>
+1820:                          <div className="p-1 bg-slate-950/40 border border-slate-900/60 rounded">
+1821:                            <span className="text-slate-500 block uppercase font-mono">Videos</span>
+1827:                        <div className="flex items-center justify-between border-t border-slate-900/60 pt-2.5">
+1828:                          <div className="flex gap-1">
+1829:                            <button 
+1843:                            <button 
+1856:                          <button 
+1875:              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-slate-900 text-xs text-slate-400 font-mono" id="taxonomy-pagination-bar">
+1876:                <div className="text-center sm:text-left">
+1880:                <div className="flex items-center gap-1.5 flex-wrap justify-center bg-slate-950 p-1 border border-slate-900 rounded-xl select-none">
+1916:                  <span className="px-3 py-1 bg-slate-900 border border-slate-850 rounded-lg text-slate-300 font-bold h-8 flex items-center justify-center text-xs select-none min-w-[60px]">
+1960:            <div className="space-y-6">
+1963:              <div className="bg-slate-950 border border-slate-900 rounded-3xl p-6 space-y-4 text-left">
+1964:                <div>
+1971:                <div className="space-y-3">
+1972:                  <div className="flex gap-2">
+1979:                    <button 
+1995:                  <div className="space-y-1.5 max-h-40 overflow-y-auto">
+2000:                        <div key={keyword} className="flex items-center justify-between p-2 bg-slate-900/45 border border-slate-900 rounded-xl">
+2001:                          <span className="font-mono text-xs text-rose-400">#{keyword}</span>
+2002:                          <button 
+2017:              <div className="bg-slate-950 border border-slate-900 rounded-3xl p-6 space-y-4 text-left">
+2018:                <div>
+2025:                <div className="space-y-2 max-h-48 overflow-y-auto">
+2030:                      <div key={purged.id} className="p-2.5 bg-slate-1000 border border-slate-900 rounded-xl flex items-center justify-between">
+2031:                        <div className="text-left">
+2032:                          <span className="font-mono text-xs text-slate-200">#{purged.name}</span>
+2033:                          <span className="text-[8.5px] text-slate-505 font-mono block">Backup Count: {purged.count || 0}</span>
+2035:                        <button 
+2055:            <div className="p-6 bg-slate-955 border border-slate-850 rounded-3xl space-y-5 animate-fadeIn">
+2057:              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-slate-905 pb-3 gap-4">
+2058:                <div className="text-left">
+2059:                  <div className="flex items-center gap-2">
+2063:                    <span className="text-[9px] font-mono uppercase bg-slate-900 border border-slate-850 text-indigo-400 px-2.5 py-0.5 rounded-full select-none">Auditor Page</span>
+2068:                <button 
+2078:              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 font-mono text-center">
+2079:                <div className="p-3 bg-slate-900/10 rounded-2xl">
+2080:                  <span className="text-[9px] text-slate-500 uppercase block font-mono">Original Creator</span>
+2081:                  <span className="text-indigo-400 font-bold">@{selectedTagDetail.mostActiveUsername || "nightmaster"}</span>
+2083:                <div className="p-3 bg-slate-900/10 rounded-2xl">
+2084:                  <span className="text-[9px] text-slate-500 uppercase block font-mono">Database ID</span>
+2085:                  <span className="text-slate-305 font-bold truncate block">ID: {selectedTagDetail.id}</span>
+2087:                <div className="p-3 bg-slate-900/10 rounded-2xl">
+2088:                  <span className="text-[9px] text-slate-500 uppercase block font-mono">Growth Index (24h)</span>
+2089:                  <span className={`${(selectedTagDetail.growthDaily ?? 0) >= 0 ? "text-emerald-400" : "text-rose-400"} font-bold`}>
+2093:                <div className="p-3 bg-slate-900/10 rounded-2xl">
+2094:                  <span className="text-[9px] text-slate-500 uppercase block font-mono">Taxonomy Last Active</span>
+2095:                  <span className="text-slate-400 font-bold font-mono">
+2102:              <div className="space-y-4">
+2125:                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+2129:                        <div key={blog.id} className="p-4 bg-slate-900/15 border border-slate-900 rounded-2xl flex flex-col justify-between space-y-3 text-left animate-fadeIn">
+2130:                          <div className="space-y-1.5">
+2131:                            <div className="flex items-center justify-between text-[9px] font-mono text-purple-400 font-black">
+2132:                              <span>BLOG POST DIRECTORY</span>
+2133:                              <span>@{blog.authorUsername || "author"}</span>
+2139:                          <button 
+2154:                        <div key={photo.id} className="p-4 bg-slate-900/15 border border-slate-900 rounded-2xl flex flex-col justify-between space-y-3 text-left animate-fadeIn">
+2155:                          <div className="space-y-1 text-left">
+2156:                            <div className="flex items-center justify-between text-[9px] font-mono text-cyan-404 font-black">
+2157:                              <span className="text-cyan-400">PHOTO EXHIBIT</span>
+2158:                              <span>@{photo.creatorUsername || "artist"}</span>
+2164:                          <button 
+2178:                        <div key={video.id} className="p-4 bg-slate-900/15 border border-slate-900 rounded-2xl flex flex-col justify-between space-y-3 text-left animate-fadeIn">
+2179:                          <div className="space-y-2">
+2180:                            <div className="flex items-center justify-between text-[9px] font-mono text-emerald-400 font-black">
+2181:                              <span>VIDEO ASSET STREAM</span>
+2182:                              <span>@{video.creatorUsername || "videographer"}</span>
+2184:                            <div className="w-full h-24 bg-slate-905 rounded-lg border border-slate-900 flex flex-col items-center justify-center p-2 text-center text-slate-500 space-y-1">
+2186:                              <span className="text-[9px] font-mono word-break line-clamp-1">{video.title || "Custom Stream Element"}</span>
+2190:                          <button 
+2217:              <div className="lg:col-span-4 bg-slate-900/40 border border-slate-800 rounded-3xl p-5 space-y-4 backdrop-blur-md flex flex-col max-h-[750px]">
+2218:                <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+2219:                  <div>
+2227:                  <span className="text-[9px] font-mono text-indigo-400 font-bold bg-indigo-950/50 px-2 py-0.5 rounded border border-indigo-900/40">
+2233:                <div className="relative">
+2245:                <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+2247:                    <div className="text-center py-12 text-slate-600 font-mono text-xs">
+2256:                        <div
+2265:                          <div className="flex items-center gap-3 min-w-0">
+2271:                            <div className="min-w-0">
+2272:                              <div className="font-space font-bold text-xs truncate flex items-center gap-1.5">
+2273:                                <span>@{usr.username}</span>
+2275:                                  <span className="text-[8px] bg-rose-500/20 text-rose-400 border border-rose-500/30 px-1 rounded font-mono font-bold">ROOT</span>
+2282:                          <div className="text-right shrink-0 space-y-1">
+2284:                            <div className="text-[9px] font-mono text-indigo-400 font-bold">
+2296:              <div className="lg:col-span-8 bg-slate-900/40 border border-slate-800 rounded-3xl p-6 space-y-6 backdrop-blur-md">
+2298:                  <div className="py-24 text-center space-y-3">
+2299:                    <div className="w-16 h-16 rounded-3xl bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-600 mx-auto">
+2312:                    <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+2313:                      <div className="flex items-center gap-4">
+2319:                        <div className="space-y-1">
+2320:                          <div className="flex items-center gap-2 flex-wrap">
+2324:                            <span className="text-xs text-indigo-400 font-mono">@{inspectedUser.username}</span>
+2333:                      <div className="text-left sm:text-right shrink-0 space-y-1 bg-slate-900/80 p-3 rounded-xl border border-slate-850">
+2334:                        <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">User ID:</span>
+2335:                        <span className="text-xs font-mono font-bold text-slate-300">{inspectedUser.id}</span>
+2340:                    <div className="space-y-2">
+2341:                      <div className="flex items-center justify-between">
+2342:                        <span className="text-[10px] font-mono text-indigo-400 uppercase tracking-widest font-black flex items-center gap-1.5">
+2346:                        <span className="text-[9px] font-mono text-slate-500 italic">
+2351:                      <div className="p-3.5 bg-slate-950/70 border border-slate-850 rounded-2xl flex flex-wrap gap-2 min-h-[50px] items-center">
+2353:                          <span className="text-xs font-mono text-slate-600 italic">
+2362:                              <div
+2366:                                <span>{bName}</span>
+2368:                                  <button
+2385:                    <div className="space-y-3">
+2386:                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+2387:                        <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-black flex items-center gap-1.5">
+2391:                        <span className="text-[9px] font-mono text-slate-500">
+2396:                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+2405:                            <div
+2415:                              <div className="space-y-2">
+2416:                                <div className="flex items-center justify-between">
+2417:                                  <div className="flex items-center gap-2.5">
+2418:                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${b.bgColor || "bg-indigo-500/10"} ${b.color || "text-indigo-400"} border ${b.borderColor || "border-indigo-500/20"}`}>
+2421:                                    <div>
+2423:                                      <span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider">
+2430:                                  <span className={`px-2 py-0.5 rounded text-[8px] font-mono font-bold uppercase tracking-wider ${
+2447:                              <div className="pt-3 mt-3 border-t border-slate-900 flex items-center justify-between gap-2">
+2449:                                  <button
+2454:                                    <span>UNLOCKED</span>
+2457:                                  <div className="w-full py-2 bg-slate-900/60 border border-slate-850 text-slate-500 font-mono text-[9px] uppercase rounded-xl flex items-center justify-center gap-1.5 cursor-not-allowed text-center">
+2459:                                    <span>
+2464:                                  <button
+2473:                                    <span>UNLOCK BADGE</span>
+2490:            <div className="bg-slate-900/40 border border-slate-800 rounded-3xl p-6 space-y-6 backdrop-blur-md">
+2491:              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-800 pb-4">
+2492:                <div>
+2503:              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+2508:                    <div
+2512:                      <div className="space-y-3">
+2513:                        <div className="flex items-center justify-between">
+2514:                          <div className={`p-3 rounded-2xl border ${b.borderColor || "border-indigo-500/30"} bg-slate-950/70`}>
+2517:                          <div className="text-right">
+2518:                            <span className="text-[10px] font-mono font-bold text-slate-300 bg-slate-900 px-2 py-0.5 rounded border border-slate-800 uppercase block">
+2521:                            <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest mt-1 block">
+2527:                        <div>
+2529:                          <span className="text-[10px] font-mono text-indigo-400">ID: {b.id}</span>
+2534:                      <div className="pt-3 border-t border-slate-800/80 space-y-2">
+2535:                        <div className="text-[10px] text-slate-400 font-sans leading-relaxed bg-slate-950/60 p-2.5 rounded-xl border border-slate-850">
+2539:                        <div className="flex items-center justify-between text-[9px] font-mono text-slate-500 pt-1">
+2540:                          <span>Status: <strong className="text-emerald-400">{b.status}</strong></span>
+2541:                          <span>Dibuat: {new Date(b.createdAt).toLocaleDateString()}</span>
+2553:            <div className="bg-slate-900/40 border border-slate-800 rounded-3xl p-6 space-y-5 backdrop-blur-md">
+2554:              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-800 pb-4">
+2555:                <div>
+2565:                <div className="relative w-full sm:w-64">
+2578:              <div className="overflow-x-auto custom-scrollbar">
+2606:                            <span className="font-space font-bold text-xs text-indigo-300">
+2611:                            <span className="px-2.5 py-1 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-[10px] font-bold font-space inline-flex items-center gap-1.5 shadow-sm">
+2614:                              <span className="text-[8px] opacity-70 font-mono">T{award.badgeTier}</span>
+2618:                            <div className="flex items-center gap-1.5">
+2619:                              <span className="font-mono text-xs text-slate-300">@{award.grantedByUsername}</span>
+2627:                            <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full text-[9px] font-mono font-bold">
+2649:        <div className="space-y-6" id="deck-security-panel">
+2651:          <div className="bg-slate-950 border border-slate-900 rounded-3xl p-6 space-y-4">
+2653:            <div className="flex items-center justify-between border-b border-slate-900 pb-3">
+2654:              <div>
+2661:              <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
+2662:                <div className="relative flex-1 sm:w-64">
+2672:                <div className="flex items-center gap-2">
+2673:                <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+2674:                <span className="text-[10px] font-mono text-emerald-400 uppercase font-black tracking-widest leading-relaxed">SECURE SSE LINKED</span>
+2680:            <div className="bg-slate-900/10 border border-slate-900 rounded-2xl p-4 overflow-y-auto max-h-[500px] select-none text-[11px] leading-relaxed font-mono space-y-3.5">
+2682:                <div className="text-center py-16 text-slate-600 font-mono">No telemetry audits reported to console matching your search.</div>
+2685:                  <div key={log.id} className="p-3 bg-slate-950 hover:bg-slate-950/80 border border-slate-900/60 rounded-xl relative">
+2686:                    <div className="flex items-center justify-between flex-wrap gap-2 mb-1">
+2687:                      <span className="text-rose-455 font-bold uppercase bg-rose-955/10 border border-rose-500/10 px-2 py-0.5 rounded">Action: {log.action}</span>
+2688:                      <span className="text-[10px] text-slate-600 text-right">{new Date(log.timestamp).toLocaleString()}</span>
+2693:                    <div className="flex items-center gap-4 mt-2 text-[9px] text-slate-500 pt-2 border-t border-slate-900">
+2694:                      <span>Operator: <span className="text-slate-400 font-bold">@{log.adminUsername || "System"}</span></span>
+2695:                      <span>Category classification: <span className="text-emerald-400 font-bold uppercase">{log.targetType}</span></span>
+2696:                      {log.targetId && <span>Filing Target Ref: <span className="slate-400 font-mono">{log.targetId}</span></span>}
+2704:            <div className="p-4 bg-yellow-950/15 border border-yellow-800/20 text-yellow-350 rounded-2xl flex gap-3 text-xs leading-relaxed">
+2706:              <div>
+2707:                <span className="font-extrabold uppercase text-[10.5px] block font-mono">Simulated Brute-Force login safeguards:</span>
+2719:        <div className="space-y-6" id="deck-settings-panel">
+2721:          <div className="bg-slate-950 border border-slate-900 rounded-3xl p-6 space-y-6">
+2723:            <div className="border-b border-slate-900 pb-4">
+2731:            <div className="p-6 bg-slate-900/50 border border-slate-850 rounded-2xl md:rounded-3xl space-y-6">
+2733:              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+2734:                <div>
+2735:                  <div className="flex items-center gap-2 flex-wrap">
+2736:                    <span className="text-[10px] uppercase font-mono tracking-widest text-purple-400 font-black border-l-2 border-purple-500 pl-2">
+2740:                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[9px] font-mono font-bold flex items-center gap-1">
+2744:                      <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[9px] font-mono font-bold flex items-center gap-1">
+2760:                  <div className="flex items-center gap-2 shrink-0">
+2761:                    <button
+2769:                    <button
+2782:              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+2788:                    <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-4 ${
+2793:                      <div className="space-y-3">
+2794:                        <div className="flex items-center justify-between">
+2795:                          <div className="flex items-center gap-2">
+2796:                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+2801:                            <div>
+2802:                              <span className="text-[10px] font-mono text-slate-500 font-bold block">1. Photo</span>
+2808:                          <div className="flex items-center gap-2">
+2809:                            <span className="text-[10px] font-mono font-black uppercase text-slate-400">
+2812:                            <button
+2822:                              <span
+2832:                        <div className={`p-2.5 rounded-xl border flex items-center gap-2 ${
+2837:                          <span className={`w-2 h-2 rounded-full shrink-0 ${isPhotoAuto ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+2838:                          <span className="font-mono text-[11px] font-black uppercase tracking-tight">
+2850:                      <div className="pt-2 border-t border-slate-900/60 flex items-center justify-between text-[10px] font-mono text-slate-500">
+2851:                        <span>New uploads only</span>
+2852:                        <span className={isPhotoAuto ? "text-emerald-400 font-bold" : "text-amber-400 font-bold"}>
+2864:                    <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-4 ${
+2869:                      <div className="space-y-3">
+2870:                        <div className="flex items-center justify-between">
+2871:                          <div className="flex items-center gap-2">
+2872:                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+2877:                            <div>
+2878:                              <span className="text-[10px] font-mono text-slate-500 font-bold block">2. Video</span>
+2884:                          <div className="flex items-center gap-2">
+2885:                            <span className="text-[10px] font-mono font-black uppercase text-slate-400">
+2888:                            <button
+2898:                              <span
+2908:                        <div className={`p-2.5 rounded-xl border flex items-center gap-2 ${
+2913:                          <span className={`w-2 h-2 rounded-full shrink-0 ${isVideoAuto ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+2914:                          <span className="font-mono text-[11px] font-black uppercase tracking-tight">
+2926:                      <div className="pt-2 border-t border-slate-900/60 flex items-center justify-between text-[10px] font-mono text-slate-500">
+2927:                        <span>New uploads only</span>
+2928:                        <span className={isVideoAuto ? "text-emerald-400 font-bold" : "text-amber-400 font-bold"}>
+2940:                    <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between space-y-4 ${
+2945:                      <div className="space-y-3">
+2946:                        <div className="flex items-center justify-between">
+2947:                          <div className="flex items-center gap-2">
+2948:                            <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+2953:                            <div>
+2954:                              <span className="text-[10px] font-mono text-slate-500 font-bold block">3. Blog</span>
+2960:                          <div className="flex items-center gap-2">
+2961:                            <span className="text-[10px] font-mono font-black uppercase text-slate-400">
+2964:                            <button
+2974:                              <span
+2984:                        <div className={`p-2.5 rounded-xl border flex items-center gap-2 ${
+2989:                          <span className={`w-2 h-2 rounded-full shrink-0 ${isBlogAuto ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'}`}></span>
+2990:                          <span className="font-mono text-[11px] font-black uppercase tracking-tight">
+3002:                      <div className="pt-2 border-t border-slate-900/60 flex items-center justify-between text-[10px] font-mono text-slate-500">
+3003:                        <span>New uploads only</span>
+3004:                        <span className={isBlogAuto ? "text-emerald-400 font-bold" : "text-amber-400 font-bold"}>
+3015:              <div className="p-3.5 bg-slate-950/60 border border-slate-850 rounded-xl flex items-center justify-between flex-wrap gap-2 text-[10px] font-mono text-slate-400">
+3016:                <div className="flex items-center gap-2">
+3018:                  <span>Kebijakan persetujuan ini tersimpan permanen di database dan divalidasi backend untuk setiap unggahan baru.</span>
+3020:                <span className="text-slate-500">Konten terdahulu tidak terpengaruh oleh perubahan toggle.</span>
+3026:            <div className="p-6 bg-slate-900/50 border border-slate-850 rounded-2xl md:rounded-3xl space-y-6" id="favicon-management-panel">
+3028:              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-4">
+3029:                <div>
+3030:                  <div className="flex items-center gap-2 flex-wrap">
+3031:                    <span className="text-[10px] uppercase font-mono tracking-widest text-cyan-400 font-black border-l-2 border-cyan-400 pl-2">
+3035:                      <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[9px] font-mono font-bold flex items-center gap-1">
+3039:                      <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[9px] font-mono font-bold flex items-center gap-1">
+3055:                  <button
+3064:                    <span>Reset to Default</span>
+3070:              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+3073:                <div className="lg:col-span-5 space-y-4 flex flex-col justify-between">
+3074:                  <div className="space-y-3">
+3080:                    <div className={`p-5 rounded-2xl border-2 border-dashed transition-all relative ${
+3095:                      <div className="flex flex-col items-center justify-center text-center space-y-2.5 py-3 pointer-events-none">
+3096:                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
+3101:                        <div>
+3110:                          <span className="px-2.5 py-0.5 rounded-full bg-cyan-500/10 border border-cyan-500/20 text-cyan-300 text-[10px] font-mono font-bold">
+3118:                    <div className="grid grid-cols-3 gap-2 text-[10px] font-mono text-center">
+3119:                      <div className="p-2 bg-slate-950/80 border border-slate-850 rounded-xl">
+3120:                        <span className="text-slate-500 block">FORMAT</span>
+3123:                      <div className="p-2 bg-slate-950/80 border border-slate-850 rounded-xl">
+3124:                        <span className="text-slate-500 block">MAX SIZE</span>
+3127:                      <div className="p-2 bg-slate-950/80 border border-slate-850 rounded-xl">
+3128:                        <span className="text-slate-500 block">CACHE</span>
+3135:                  <div className="flex items-center gap-2 pt-2">
+3136:                    <button
+3146:                          <span>Menyimpan...</span>
+3151:                          <span>Save Changes</span>
+3157:                      <button
+3171:                <div className="lg:col-span-7 space-y-4">
+3177:                  <div className="bg-slate-950 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+3179:                    <div className="bg-slate-900/90 border-b border-slate-850 px-3 pt-2.5 pb-0 flex items-center gap-2">
+3181:                      <div className="flex items-center gap-1.5 mr-2">
+3182:                        <div className="w-2.5 h-2.5 rounded-full bg-rose-500/80"></div>
+3183:                        <div className="w-2.5 h-2.5 rounded-full bg-amber-500/80"></div>
+3184:                        <div className="w-2.5 h-2.5 rounded-full bg-emerald-500/80"></div>
+3188:                      <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-950 border-t border-x border-slate-800 rounded-t-xl max-w-[260px] text-xs font-sans text-slate-200 select-none shadow-sm relative">
+3198:                        <span className="truncate text-[11px] font-medium font-sans text-slate-300">
+3205:                      <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 text-slate-500 max-w-[140px] text-xs font-sans select-none opacity-60">
+3206:                        <span className="text-[10px] truncate">Dashboard</span>
+3211:                    <div className="bg-slate-950 px-4 py-2 border-b border-slate-900 flex items-center gap-2 text-[11px] font-mono text-slate-500">
+3213:                      <span className="text-slate-400 font-sans">https://</span>
+3214:                      <span className="text-slate-200 font-sans font-semibold">nightverse.live</span>
+3215:                      <span className="text-slate-500 font-sans">/explore</span>
+3216:                      <span className="ml-auto text-[9px] px-2 py-0.5 rounded bg-slate-900 text-purple-400 border border-slate-850">
+3222:                    <div className="p-4 bg-slate-950/70 grid grid-cols-1 sm:grid-cols-3 gap-4 items-center">
+3225:                      <div className="p-3 bg-slate-900/60 border border-slate-850/80 rounded-xl flex items-center gap-3">
+3226:                        <div className="w-10 h-10 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center shrink-0">
+3236:                        <div className="min-w-0">
+3237:                          <span className="text-[10px] font-mono text-slate-400 block font-bold">16 × 16 px</span>
+3238:                          <span className="text-[9px] text-slate-500 truncate block">Browser Tab standard</span>
+3243:                      <div className="p-3 bg-slate-900/60 border border-slate-850/80 rounded-xl flex items-center gap-3">
+3244:                        <div className="w-10 h-10 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center shrink-0">
+3254:                        <div className="min-w-0">
+3255:                          <span className="text-[10px] font-mono text-slate-400 block font-bold">32 × 32 px</span>
+3256:                          <span className="text-[9px] text-slate-500 truncate block">Retina / Bookmark</span>
+3261:                      <div className="p-3 bg-slate-900/60 border border-slate-850/80 rounded-xl flex items-center gap-3">
+3262:                        <div className="w-10 h-10 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center shrink-0">
+3272:                        <div className="min-w-0">
+3273:                          <span className="text-[10px] font-mono text-slate-400 block font-bold">64 × 64 px</span>
+3274:                          <span className="text-[9px] text-slate-500 truncate block">PWA / HiDPI icon</span>
+3283:                  <div className="p-3 bg-slate-950/50 border border-slate-850/80 rounded-xl flex items-center justify-between flex-wrap gap-2 text-[10px] font-mono text-slate-400">
+3284:                    <div className="flex items-center gap-2">
+3286:                      <span>
+3287:                        URL Aktif: <span className="text-slate-300 font-bold">{systemSettings.faviconUrl || "/favicon.svg"}</span>
+3290:                    <span className="text-slate-500">
+3302:            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-xs">
+3304:              <div className="space-y-4">
+3306:                <span className="text-[10px] uppercase font-mono tracking-widest text-purple-400 font-black block border-l-2 border-purple-500 pl-2"> Branded App Aesthetics</span>
+3308:                <div className="space-y-1.5">
+3318:                <div className="space-y-1.5">
+3328:                <div className="space-y-1.5">
+3330:                  <div className="flex items-center gap-2">
+3362:                <div className="space-y-1.5">
+3372:                <div className="space-y-1.5">
+3384:              <div className="space-y-4">
+3386:                <span className="text-[10px] uppercase font-mono tracking-widest text-cyan-400 font-black block border-l-2 border-cyan-400 pl-2">Upload Files bounds & SEO</span>
+3388:                <div className="grid grid-cols-2 gap-4">
+3389:                  <div className="space-y-1.5">
+3398:                  <div className="space-y-1.5">
+3409:                <div className="space-y-1.5">
+3419:                <div className="space-y-1.5">
+3429:                <div className="space-y-1.5">
+3439:                <div className="pt-2 flex gap-4">
+3449:                    <span>Real-time SSE Stream Broadcasts</span>
+3459:                    <span>Email Verification checks</span>
+3464:                <div className="pt-3 border-t border-slate-800/80">
+3472:                    <div>
+3473:                      <span className="font-bold text-white block font-space text-xs">Creator Masterpieces Blur Effect</span>
+3474:                      <span className="text-[10px] text-slate-400 block font-sans mt-0.5">ON: Seluruh media visual pada kartu Curated Creator Masterpieces menjadi blur. OFF: Normal.</span>
+3483:            <div className="flex justify-end pt-4 border-t border-slate-900">
+3484:              <button 
+3500:        <div className="space-y-6" id="deck-docs-panel">
+3519:            <div className="flex flex-col gap-1 overflow-hidden">
+3520:              <span className="text-sm font-bold text-slate-200">Content ID: {contentToDeleteLog.contentId}</span>
+3521:              <span className="text-xs font-mono text-purple-400">Type: {contentToDeleteLog.contentType}</span>
+3522:              <div className="flex gap-3 text-[10px] text-slate-500 mt-1">
+3523:                <span className="flex items-center gap-1">Reported around {new Date(contentToDeleteLog.createdAt).toLocaleDateString()}</span>
+3554:          <div className="flex flex-col gap-2">
+3555:            <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest font-bold">Selected hashtags:</span>
+3556:            <div className="max-h-[120px] overflow-y-auto custom-scrollbar p-3 bg-slate-950/50 rounded-xl border border-slate-800 flex flex-wrap gap-2">
+3560:                    <span key={id} className="text-[10px] font-mono px-2 py-1 bg-rose-950/30 text-rose-400 border border-rose-900/40 rounded-md">
+3599:            <div className="flex flex-col gap-1 overflow-hidden">
+3600:              <span className="text-sm font-bold text-slate-200">Tag: #{tagToDelete.name}</span>
+3601:              <span className="text-xs font-mono text-purple-400">Total Uses: {tagToDelete.count || tagToDelete.usageCount || 0}</span>
+3602:              <div className="flex gap-3 text-[10px] text-slate-500 mt-1">
+3603:                <span>Created {new Date(tagToDelete.createdAt).toLocaleDateString()}</span>
+3617:          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+3618:            <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+3619:              <div className="p-6 border-b border-slate-800 bg-slate-900/60 flex items-center justify-between">
+3620:                <div className="flex items-center gap-3">
+3621:                  <div className="w-10 h-10 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
+3624:                  <div>
+3629:                <button 
+3638:              <div className="p-6 space-y-5">
+3641:                  <div className={`p-4 rounded-2xl border ${targetBadge.bgColor || "bg-indigo-500/10"} ${targetBadge.borderColor || "border-indigo-500/30"} flex items-center gap-3.5 shadow-md`}>
+3642:                    <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-850 shrink-0">
+3645:                    <div className="min-w-0 flex-1">
+3646:                      <div className="flex items-center gap-2 flex-wrap">
+3648:                        <span className="text-[9px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-300 uppercase font-bold">
+3659:                  <div className="p-3.5 rounded-2xl bg-rose-950/20 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2.5">
+3661:                    <span>
+3668:                <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 flex items-center justify-between">
+3669:                  <div className="flex items-center gap-2.5">
+3675:                    <span className="text-xs font-bold text-slate-200">Penerima: @{inspectedUser.username}</span>
+3681:                <div className="space-y-1.5">
+3694:                <div className="grid grid-cols-2 gap-3">
+3695:                  <div className="space-y-1">
+3704:                  <div className="space-y-1">
+3706:                    <div className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-indigo-400 font-mono font-bold truncate">
+3713:              <div className="p-6 bg-slate-950/60 border-t border-slate-800 flex gap-3">
+3714:                <button 
+3722:                <button 
+3731:                      <span>UNLOCKING...</span>
+3736:                      <span>CONFIRM & UNLOCK BADGE</span>
+3748:        <div className="fixed inset-0 z-[125] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+3749:          <div className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+3750:            <div className="p-6 border-b border-slate-800 bg-slate-900/70 flex items-center justify-between">
+3751:              <div className="flex items-center gap-3">
+3752:                <div className="w-10 h-10 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
+3755:                <div>
+3760:              <button onClick={() => setCreateBadgeModalOpen(false)} className="text-slate-500 hover:text-white transition-colors cursor-pointer">
+3766:              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+3767:                <div className="space-y-1">
+3779:                <div className="space-y-1">
+3792:              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+3793:                <div className="space-y-1">
+3813:                <div className="space-y-1">
+3827:                <div className="space-y-1">
+3844:              <div className="space-y-1">
+3846:                <div className="flex flex-wrap gap-2">
+3848:                    <button
+3864:              <div className="space-y-1">
+3876:              <div className="space-y-1">
+3888:              <div className="pt-4 border-t border-slate-800 flex justify-end gap-3">
+3889:                <button
+3896:                <button
+3910:        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+3911:          <div className="w-full max-w-4xl max-h-[85vh] bg-slate-900 border border-slate-700/50 rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+3912:            <div className="bg-slate-905 border-b border-slate-800 p-5 flex items-center justify-between">
+3913:              <div>
+3914:                <h2 className="font-bold font-space text-lg text-slate-100">#{previewTag.name} <span className="text-sm text-slate-500 font-mono">Directory Preview</span></h2>
+3915:                <div className="text-xs text-slate-400 font-mono mt-1 space-x-3">
+3916:                  <span>Usage: {previewTag.count || previewTag.usageCount || 0} times</span>
+3917:                  <span>Origin: {previewTag.mostActiveUsername ? `@${previewTag.mostActiveUsername}` : "Anonymous"}</span>
+3920:              <button
+3928:            <div className="flex-1 overflow-y-auto p-6 bg-slate-950">
+3929:              <div className="space-y-6">
+3932:                  <div>
+3934:                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+3936:                        <div key={b.id} className="p-3 bg-slate-900 border border-slate-800 rounded-xl">
+3947:                  <div>
+3949:                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+3951:                        <div key={p.id} className="relative aspect-square rounded-xl overflow-hidden border border-slate-800 group">
+3953:                          <div className="absolute inset-x-0 bottom-0 p-2 bg-gradient-to-t from-slate-950 to-transparent">
+3964:                  <div>
+3966:                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+3968:                        <div key={v.id} className="bg-slate-900 border border-slate-800 rounded-xl p-3">
+3980:                   <div className="py-12 text-center text-slate-500 font-mono text-sm">
+3987:            <div className="p-4 border-t border-slate-800 bg-slate-905 flex justify-end gap-3 sticky bottom-0 z-20 backdrop-blur-md">
+3988:               <button
+3998:               <button

@@ -139,6 +139,12 @@ export const NotificationCenter: React.FC = () => {
       if (n.link.startsWith('PROFILE:')) {
         const userId = n.link.split(':')[1];
         viewProfile(userId);
+      } else if (n.link.startsWith('TICKET:')) {
+        if (isAdmin) {
+          navigateTo('dashboard', 'admin-reports');
+        } else {
+          navigateTo('dashboard', 'settings');
+        }
       } else if (n.link.includes('/moderate/')) {
         // Moderation link
         navigateTo('dashboard', 'admin-reviews');

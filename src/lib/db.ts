@@ -1,8 +1,11 @@
 import { 
   User, Blog, Photo, Video, Tag, TagType, TagStatus, Notification, Comment, SystemSettings, Role, ContentStatus,
-  BadgeDefinition, UserBadgeAward
+  BadgeDefinition, UserBadgeAward,
+  DocumentationArticle, DocumentationCategory, DocumentationRevision, ChangelogRelease,
+  SupportTicket, TicketMessage, TicketStatus
 } from "../types.js";
 import { hashPassword } from "./crypto.js";
+import { DEFAULT_DOC_CATEGORIES, DEFAULT_DOC_ARTICLES, DEFAULT_CHANGELOGS } from "./defaultDocs.js";
 
 // Keys for Storage
 const KEYS = {
@@ -19,7 +22,13 @@ const KEYS = {
   LOGS: "nv_logs",
   SYSTEM_SETTINGS: "nv_system_settings",
   BADGES: "nv_badges",
-  BADGE_AWARDS: "nv_badge_awards"
+  BADGE_AWARDS: "nv_badge_awards",
+  DOCUMENTATIONS: "nv_documentations",
+  DOC_CATEGORIES: "nv_doc_categories",
+  DOC_REVISIONS: "nv_doc_revisions",
+  CHANGELOGS: "nv_changelogs",
+  SUPPORT_TICKETS: "nv_support_tickets",
+  TICKET_MESSAGES: "nv_ticket_messages"
 };
 
 // Memory Cache for Synchronous Access
@@ -137,6 +146,7 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   enableEmailVerification: true,
   enablePushNotifications: false,
   enableRealtimeStream: true,
+  creatorMasterpiecesBlur: false,
   mediaApproval: {
     photo: true,
     video: false,
@@ -476,6 +486,59 @@ export const initDB = async (): Promise<void> => {
     ];
     set(KEYS.BADGE_AWARDS, initialAwards);
   }
+
+  // Synchronize and seed Documentations
+  if (!get(KEYS.DOCUMENTATIONS, null)) {
+    set(KEYS.DOCUMENTATIONS, DEFAULT_DOC_ARTICLES);
+  } else {
+    const currentDocs = get<DocumentationArticle[]>(KEYS.DOCUMENTATIONS, []);
+    let docsModified = false;
+    DEFAULT_DOC_ARTICLES.forEach(defDoc => {
+      const idx = currentDocs.findIndex(d => d.id === defDoc.id);
+      if (idx === -1) {
+        currentDocs.push(defDoc);
+        docsModified = true;
+      } else if (new Date(defDoc.updatedAt).getTime() >= new Date(currentDocs[idx].updatedAt).getTime()) {
+        currentDocs[idx] = defDoc;
+        docsModified = true;
+      }
+    });
+    if (docsModified) set(KEYS.DOCUMENTATIONS, currentDocs);
+  }
+
+  // Synchronize and seed Changelogs
+  if (!get(KEYS.CHANGELOGS, null)) {
+    set(KEYS.CHANGELOGS, DEFAULT_CHANGELOGS);
+  } else {
+    const currentChangelogs = get<ChangelogRelease[]>(KEYS.CHANGELOGS, []);
+    let changelogsModified = false;
+    DEFAULT_CHANGELOGS.forEach(defCl => {
+      const idx = currentChangelogs.findIndex(c => c.id === defCl.id || c.versionNumber === defCl.versionNumber);
+      if (idx === -1) {
+        currentChangelogs.unshift(defCl);
+        changelogsModified = true;
+      } else {
+        currentChangelogs[idx] = defCl;
+        changelogsModified = true;
+      }
+    });
+    if (changelogsModified) set(KEYS.CHANGELOGS, currentChangelogs);
+  }
+
+  // Synchronize and seed Doc Categories
+  if (!get(KEYS.DOC_CATEGORIES, null)) {
+    set(KEYS.DOC_CATEGORIES, DEFAULT_DOC_CATEGORIES);
+  } else {
+    const currentCats = get<DocumentationCategory[]>(KEYS.DOC_CATEGORIES, []);
+    let catsModified = false;
+    DEFAULT_DOC_CATEGORIES.forEach(defCat => {
+      if (!currentCats.some(c => c.id === defCat.id)) {
+        currentCats.push(defCat);
+        catsModified = true;
+      }
+    });
+    if (catsModified) set(KEYS.DOC_CATEGORIES, currentCats);
+  }
   
   dbInitialized = true;
 };
@@ -753,15 +816,19 @@ export const db = {
 
   // Tags
   tags: {
-    getAll: () => get<Tag[]>(KEYS.TAGS, []),
-    add: (tagData: { name: string; type?: TagType; isAmbiguous?: boolean; status?: TagStatus; createdBy?: string }) => {
-      const tags = get<Tag[]>(KEYS.TAGS, []);
+    getAll: (): Tag[] => {
+      const list = get<Tag[]>(KEYS.TAGS, []);
+      return Array.isArray(list) ? list.map(t => ({ ...t })) : [];
+    },
+    add: (tagData: { name: string; type?: TagType; isAmbiguous?: boolean; status?: TagStatus; createdBy?: string }): Tag | null => {
+      const rawTags = get<Tag[]>(KEYS.TAGS, []);
+      const tags = Array.isArray(rawTags) ? rawTags.map(t => ({ ...t })) : [];
       const now = new Date().toISOString();
       const cleanName = tagData.name.toLowerCase().trim().replace(/^#/, "");
       if (!cleanName) return null;
       
       // Check if tag already exists
-      const existingIndex = tags.findIndex(t => t.name.toLowerCase() === cleanName);
+      const existingIndex = tags.findIndex(t => t.name.toLowerCase() === cleanName || t.id.toLowerCase() === cleanName);
       if (existingIndex > -1) {
         const existing = tags[existingIndex];
         const updated: Tag = {
@@ -771,10 +838,11 @@ export const db = {
           status: tagData.status || existing.status || "APPROVED",
           updatedAt: now
         };
-        tags[existingIndex] = updated;
-        set(KEYS.TAGS, tags);
-        window.dispatchEvent(new CustomEvent("nightverse_tags_updated", { detail: tags }));
-        window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.TAGS, data: tags } }));
+        const updatedList = [...tags];
+        updatedList[existingIndex] = updated;
+        set(KEYS.TAGS, updatedList);
+        window.dispatchEvent(new CustomEvent("nightverse_tags_updated", { detail: updatedList.map(t => ({ ...t })) }));
+        window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.TAGS, data: updatedList.map(t => ({ ...t })) } }));
         return updated;
       }
 
@@ -802,34 +870,40 @@ export const db = {
       };
       const updatedList = [newTag, ...tags];
       set(KEYS.TAGS, updatedList);
-      window.dispatchEvent(new CustomEvent("nightverse_tags_updated", { detail: updatedList }));
-      window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.TAGS, data: updatedList } }));
+      window.dispatchEvent(new CustomEvent("nightverse_tags_updated", { detail: updatedList.map(t => ({ ...t })) }));
+      window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.TAGS, data: updatedList.map(t => ({ ...t })) } }));
       return newTag;
     },
     approve: (id: string) => {
-      const tags = get<Tag[]>(KEYS.TAGS, []);
-      const index = tags.findIndex(t => t.id === id);
+      const rawTags = get<Tag[]>(KEYS.TAGS, []);
+      const tags = Array.isArray(rawTags) ? rawTags.map(t => ({ ...t })) : [];
+      const cleanId = (id || "").toLowerCase().trim().replace(/^#/, "");
+      const index = tags.findIndex(t => t.id === id || t.name.toLowerCase() === cleanId || t.id.toLowerCase() === cleanId);
       if (index === -1) return;
       tags[index] = { ...tags[index], status: "APPROVED", updatedAt: new Date().toISOString() };
       set(KEYS.TAGS, tags);
-      window.dispatchEvent(new CustomEvent("nightverse_tags_updated", { detail: tags }));
-      window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.TAGS, data: tags } }));
+      window.dispatchEvent(new CustomEvent("nightverse_tags_updated", { detail: tags.map(t => ({ ...t })) }));
+      window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.TAGS, data: tags.map(t => ({ ...t })) } }));
     },
     reject: (id: string) => {
-      const tags = get<Tag[]>(KEYS.TAGS, []);
-      const index = tags.findIndex(t => t.id === id);
+      const rawTags = get<Tag[]>(KEYS.TAGS, []);
+      const tags = Array.isArray(rawTags) ? rawTags.map(t => ({ ...t })) : [];
+      const cleanId = (id || "").toLowerCase().trim().replace(/^#/, "");
+      const index = tags.findIndex(t => t.id === id || t.name.toLowerCase() === cleanId || t.id.toLowerCase() === cleanId);
       if (index === -1) return;
       tags[index] = { ...tags[index], status: "REJECTED", updatedAt: new Date().toISOString() };
       set(KEYS.TAGS, tags);
-      window.dispatchEvent(new CustomEvent("nightverse_tags_updated", { detail: tags }));
-      window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.TAGS, data: tags } }));
+      window.dispatchEvent(new CustomEvent("nightverse_tags_updated", { detail: tags.map(t => ({ ...t })) }));
+      window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.TAGS, data: tags.map(t => ({ ...t })) } }));
     },
     delete: (id: string) => {
-      const tags = get<Tag[]>(KEYS.TAGS, []);
-      const tagToDelete = tags.find(t => t.id === id);
+      const rawTags = get<Tag[]>(KEYS.TAGS, []);
+      const tags = Array.isArray(rawTags) ? rawTags.map(t => ({ ...t })) : [];
+      const cleanId = (id || "").toLowerCase().trim().replace(/^#/, "");
+      const tagToDelete = tags.find(t => t.id === id || t.name.toLowerCase() === cleanId || t.id.toLowerCase() === cleanId);
       const tagName = tagToDelete?.name.toLowerCase();
 
-      const remainingTags = tags.filter(t => t.id !== id);
+      const remainingTags = tags.filter(t => t.id !== id && t.name.toLowerCase() !== cleanId && t.id.toLowerCase() !== cleanId);
       set(KEYS.TAGS, remainingTags);
 
       // Clean up references from blogs, photos, and videos so reconcile doesn't resurrect deleted tags
@@ -973,47 +1047,63 @@ export const db = {
 
       set(KEYS.TAGS, updatedTags);
     },
-    update: (id: string, updates: Partial<Tag>) => {
-      const tags = get<Tag[]>(KEYS.TAGS, []);
-      const index = tags.findIndex(t => t.id === id);
-      if (index === -1) return;
+    update: (id: string, updates: Partial<Tag>): Tag | null => {
+      const rawTags = get<Tag[]>(KEYS.TAGS, []);
+      const tags = Array.isArray(rawTags) ? rawTags.map(t => ({ ...t })) : [];
+      const cleanId = (id || "").toLowerCase().trim().replace(/^#/, "");
+      
+      const index = tags.findIndex(t => 
+        t.id === id || 
+        t.name.toLowerCase() === cleanId || 
+        t.id.toLowerCase() === cleanId ||
+        (updates.name && t.name.toLowerCase() === updates.name.toLowerCase().trim().replace(/^#/, ""))
+      );
+      if (index === -1) {
+        console.warn(`Tag with identifier "${id}" not found for update`);
+        return null;
+      }
 
       const oldTag = tags[index];
       const newTag: Tag = { 
         ...oldTag, 
         ...updates, 
         name: updates.name ? updates.name.toLowerCase().trim().replace(/^#/, "") : oldTag.name,
+        type: updates.type || oldTag.type || "General",
+        isAmbiguous: updates.isAmbiguous !== undefined ? updates.isAmbiguous : (oldTag.isAmbiguous || false),
+        status: updates.status || oldTag.status || "APPROVED",
         updatedAt: new Date().toISOString() 
       };
-      tags[index] = newTag;
-      set(KEYS.TAGS, tags);
+
+      const updatedTags = [...tags];
+      updatedTags[index] = newTag;
+      set(KEYS.TAGS, updatedTags);
 
       // If name changed, update all content
-      if (updates.name && updates.name.toLowerCase() !== oldTag.name.toLowerCase()) {
+      if (updates.name && updates.name.toLowerCase().trim().replace(/^#/, "") !== oldTag.name.toLowerCase()) {
         const oldName = oldTag.name.toLowerCase();
         const newName = updates.name.toLowerCase().trim().replace(/^#/, "");
 
         const blogs = get<Blog[]>(KEYS.BLOGS, []);
         set(KEYS.BLOGS, blogs.map(b => ({
           ...b,
-          tags: b.tags.map(t => t.toLowerCase().trim().replace(/^#/, "") === oldName ? newName : t)
+          tags: (b.tags || []).map(t => t.toLowerCase().trim().replace(/^#/, "") === oldName ? newName : t)
         })));
 
         const photos = get<Photo[]>(KEYS.PHOTOS, []);
         set(KEYS.PHOTOS, photos.map(p => ({
           ...p,
-          tags: p.tags.map(t => t.toLowerCase().trim().replace(/^#/, "") === oldName ? newName : t)
+          tags: (p.tags || []).map(t => t.toLowerCase().trim().replace(/^#/, "") === oldName ? newName : t)
         })));
 
         const videos = get<Video[]>(KEYS.VIDEOS, []);
         set(KEYS.VIDEOS, videos.map(v => ({
           ...v,
-          tags: v.tags.map(t => t.toLowerCase().trim().replace(/^#/, "") === oldName ? newName : t)
+          tags: (v.tags || []).map(t => t.toLowerCase().trim().replace(/^#/, "") === oldName ? newName : t)
         })));
       }
 
-      window.dispatchEvent(new CustomEvent("nightverse_tags_updated", { detail: tags }));
-      window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.TAGS, data: tags } }));
+      window.dispatchEvent(new CustomEvent("nightverse_tags_updated", { detail: updatedTags.map(t => ({ ...t })) }));
+      window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.TAGS, data: updatedTags.map(t => ({ ...t })) } }));
       return newTag;
     },
     ban: (name: string, isBanned: boolean) => {
@@ -1274,6 +1364,134 @@ export const db = {
     }
   },
 
+  // Support Tickets
+  supportTickets: {
+    getAll: () => get<SupportTicket[]>(KEYS.SUPPORT_TICKETS, []),
+    getByUser: (userId: string) => get<SupportTicket[]>(KEYS.SUPPORT_TICKETS, []).filter(t => t.userId === userId),
+    getById: (id: string) => get<SupportTicket[]>(KEYS.SUPPORT_TICKETS, []).find(t => t.id === id) || null,
+    add: (ticket: Omit<SupportTicket, "id" | "ticketNumber" | "createdAt" | "updatedAt" | "status">) => {
+      const tickets = get<SupportTicket[]>(KEYS.SUPPORT_TICKETS, []);
+      const id = "TICK-" + Date.now().toString().slice(-6);
+      const ticketNumber = Math.floor(100000 + Math.random() * 900000).toString();
+      const newTicket: SupportTicket = {
+        ...ticket,
+        id,
+        ticketNumber,
+        status: "OPEN",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+      set(KEYS.SUPPORT_TICKETS, [newTicket, ...tickets]);
+      db.supportTickets.addMessage(id, ticket.userId, ticket.username, "USER", ticket.description, ticket.attachmentUrl);
+      
+      db.notifications.add({
+        userId: "admin",
+        title: `Tiket Bantuan Baru #${ticketNumber}`,
+        message: `Tiket baru dari @${ticket.username}: "${ticket.subject}" (${ticket.priority})`,
+        category: "ADMIN",
+        type: "TICKET_NEW",
+        link: `TICKET:${id}`
+      });
+
+      return newTicket;
+    },
+    updateStatus: (id: string, status: TicketStatus, staffId?: string, staffName?: string) => {
+      const tickets = get<SupportTicket[]>(KEYS.SUPPORT_TICKETS, []);
+      const updated = tickets.map(t => {
+        if (t.id === id) {
+          const next = { 
+            ...t, 
+            status, 
+            updatedAt: new Date().toISOString(),
+            ...(staffId ? { assignedStaffId: staffId, assignedStaffName: staffName } : {}),
+            ...(status === "RESOLVED" || status === "CLOSED" ? { resolvedAt: new Date().toISOString() } : {})
+          };
+          db.notifications.add({
+            userId: t.userId,
+            title: `Status Tiket #${t.ticketNumber} Berubah`,
+            message: `Status tiket "${t.subject}" telah diubah menjadi ${status}.`,
+            category: "SYSTEM",
+            type: "TICKET_STATUS",
+            link: `TICKET:${t.id}`
+          });
+          return next;
+        }
+        return t;
+      });
+      set(KEYS.SUPPORT_TICKETS, updated);
+    },
+    assignStaff: (id: string, staffId: string, staffName: string) => {
+      const tickets = get<SupportTicket[]>(KEYS.SUPPORT_TICKETS, []);
+      const updated = tickets.map(t => {
+        if (t.id === id) {
+          const next = { ...t, assignedStaffId: staffId, assignedStaffName: staffName, updatedAt: new Date().toISOString() };
+          db.notifications.add({
+            userId: staffId,
+            title: `Tiket Ditugaskan Kepada Anda`,
+            message: `Anda ditugaskan menangani tiket #${t.ticketNumber} - "${t.subject}"`,
+            category: "ADMIN",
+            type: "TICKET_ASSIGNED",
+            link: `TICKET:${t.id}`
+          });
+          return next;
+        }
+        return t;
+      });
+      set(KEYS.SUPPORT_TICKETS, updated);
+    },
+    getMessages: (ticketId: string) => get<TicketMessage[]>(KEYS.TICKET_MESSAGES, []).filter(m => m.ticketId === ticketId),
+    addMessage: (ticketId: string, senderId: string, senderName: string, senderRole: Role, message: string, attachmentUrl?: string) => {
+      const messages = get<TicketMessage[]>(KEYS.TICKET_MESSAGES, []);
+      const newMessage: TicketMessage = {
+        id: Date.now().toString(),
+        ticketId,
+        senderId,
+        senderName,
+        senderRole,
+        message,
+        attachmentUrl,
+        createdAt: new Date().toISOString()
+      };
+      set(KEYS.TICKET_MESSAGES, [...messages, newMessage]);
+
+      const tickets = get<SupportTicket[]>(KEYS.SUPPORT_TICKETS, []);
+      const ticket = tickets.find(t => t.id === ticketId);
+      if (ticket) {
+        let newStatus = ticket.status;
+        if (senderRole === "USER" && ticket.status === "WAITING_FOR_USER") {
+          newStatus = "IN_PROGRESS";
+        } else if ((senderRole === "ADMIN" || senderRole === "SUPER_ADMIN") && ticket.status === "OPEN") {
+          newStatus = "IN_PROGRESS";
+        }
+        
+        const updatedTickets = tickets.map(t => t.id === ticketId ? { ...t, status: newStatus, updatedAt: new Date().toISOString() } : t);
+        set(KEYS.SUPPORT_TICKETS, updatedTickets);
+
+        if (senderRole === "USER") {
+          db.notifications.add({
+            userId: ticket.assignedStaffId || "admin",
+            title: `Balasan Tiket Baru #${ticket.ticketNumber}`,
+            message: `@${senderName} membalas tiket "${ticket.subject}"`,
+            category: "ADMIN",
+            type: "TICKET_REPLY",
+            link: `TICKET:${ticketId}`
+          });
+        } else {
+          db.notifications.add({
+            userId: ticket.userId,
+            title: `Tim Dukungan Membalas Tiket #${ticket.ticketNumber}`,
+            message: `Admin membalas tiket Anda: "${ticket.subject}"`,
+            category: "SYSTEM",
+            type: "TICKET_REPLY",
+            link: `TICKET:${ticketId}`
+          });
+        }
+      }
+
+      return newMessage;
+    }
+  },
+
   // Logs
   logs: {
     getAll: () => get<any[]>(KEYS.LOGS, []),
@@ -1294,7 +1512,8 @@ export const db = {
       };
       const faviconUrl = stored?.faviconUrl || "/favicon.svg";
       const faviconUpdatedAt = stored?.faviconUpdatedAt ?? 0;
-      return { ...DEFAULT_SYSTEM_SETTINGS, ...stored, mediaApproval, faviconUrl, faviconUpdatedAt };
+      const creatorMasterpiecesBlur = stored?.creatorMasterpiecesBlur ?? false;
+      return { ...DEFAULT_SYSTEM_SETTINGS, ...stored, mediaApproval, faviconUrl, faviconUpdatedAt, creatorMasterpiecesBlur };
     },
     save: (updates: Partial<SystemSettings>) => {
       const current = db.settings.get();
@@ -1562,6 +1781,262 @@ export const db = {
       );
 
       return { success: true, message: `Badge "${badgeName}" removed from @${targetUser.username}` };
+    }
+  },
+
+  // -------------------------------------------------------------
+  // DOCUMENTATION CENTER, REVISIONS, CATEGORIES & CHANGELOG
+  // -------------------------------------------------------------
+  documentations: {
+    getAll: (): DocumentationArticle[] => {
+      return get<DocumentationArticle[]>(KEYS.DOCUMENTATIONS, DEFAULT_DOC_ARTICLES);
+    },
+    getPublished: (): DocumentationArticle[] => {
+      const all = get<DocumentationArticle[]>(KEYS.DOCUMENTATIONS, DEFAULT_DOC_ARTICLES);
+      return all.filter(d => d.status === "PUBLISHED");
+    },
+    getById: (id: string): DocumentationArticle | undefined => {
+      const all = get<DocumentationArticle[]>(KEYS.DOCUMENTATIONS, DEFAULT_DOC_ARTICLES);
+      return all.find(d => d.id === id);
+    },
+    getBySlug: (slug: string): DocumentationArticle | undefined => {
+      const all = get<DocumentationArticle[]>(KEYS.DOCUMENTATIONS, DEFAULT_DOC_ARTICLES);
+      return all.find(d => d.slug === slug);
+    },
+    getByCategory: (categoryId: string): DocumentationArticle[] => {
+      const all = get<DocumentationArticle[]>(KEYS.DOCUMENTATIONS, DEFAULT_DOC_ARTICLES);
+      return all.filter(d => d.categoryId === categoryId && d.status === "PUBLISHED");
+    },
+    add: (
+      article: Omit<DocumentationArticle, "id" | "createdAt" | "updatedAt">,
+      editor: { id: string; username: string; role: Role }
+    ): { success: boolean; message: string; article?: DocumentationArticle } => {
+      if (editor.role !== "SUPER_ADMIN" && editor.role !== "ADMIN") {
+        return { success: false, message: "Akses ditolak: Hanya Super Admin dan Admin yang dapat membuat dokumentasi." };
+      }
+
+      const all = get<DocumentationArticle[]>(KEYS.DOCUMENTATIONS, DEFAULT_DOC_ARTICLES);
+      const docId = "doc-" + Date.now().toString() + "-" + Math.random().toString(36).substring(2, 6);
+      const now = new Date().toISOString();
+
+      const newArticle: DocumentationArticle = {
+        ...article,
+        id: docId,
+        createdAt: now,
+        updatedAt: now,
+        publishedAt: article.status === "PUBLISHED" ? now : undefined
+      };
+
+      set(KEYS.DOCUMENTATIONS, [newArticle, ...all]);
+
+      // Record first revision
+      const rev: DocumentationRevision = {
+        id: "rev-" + Date.now(),
+        documentationId: docId,
+        version: newArticle.version || "v1.0.0",
+        previousContent: "",
+        updatedContent: newArticle.content,
+        editorId: editor.id,
+        editorName: editor.username,
+        editorRole: editor.role,
+        revisionNumber: 1,
+        createdAt: now,
+        changeNote: "Initial creation"
+      };
+      const allRevs = get<DocumentationRevision[]>(KEYS.DOC_REVISIONS, []);
+      set(KEYS.DOC_REVISIONS, [rev, ...allRevs]);
+
+      db.logs.add("DOCUMENTATION_MANAGEMENT", `${editor.role} @${editor.username} created documentation "${newArticle.title}" (${newArticle.status})`, editor.username);
+
+      return { success: true, message: `Dokumentasi "${newArticle.title}" berhasil disimpan.`, article: newArticle };
+    },
+    update: (
+      id: string,
+      updates: Partial<DocumentationArticle>,
+      editor: { id: string; username: string; role: Role },
+      changeNote?: string
+    ): { success: boolean; message: string; article?: DocumentationArticle } => {
+      if (editor.role !== "SUPER_ADMIN" && editor.role !== "ADMIN") {
+        return { success: false, message: "Akses ditolak: Hanya Super Admin dan Admin yang dapat mengedit dokumentasi." };
+      }
+
+      const all = get<DocumentationArticle[]>(KEYS.DOCUMENTATIONS, DEFAULT_DOC_ARTICLES);
+      const index = all.findIndex(d => d.id === id);
+      if (index === -1) {
+        return { success: false, message: "Dokumentasi tidak ditemukan." };
+      }
+
+      const prev = all[index];
+      const now = new Date().toISOString();
+      const updatedArticle: DocumentationArticle = {
+        ...prev,
+        ...updates,
+        updatedAt: now,
+        publishedAt: updates.status === "PUBLISHED" && prev.status !== "PUBLISHED" ? now : prev.publishedAt
+      };
+
+      all[index] = updatedArticle;
+      set(KEYS.DOCUMENTATIONS, all);
+
+      // Record revision if content or summary changed
+      const allRevs = get<DocumentationRevision[]>(KEYS.DOC_REVISIONS, []);
+      const docRevs = allRevs.filter(r => r.documentationId === id);
+      const newRevNum = docRevs.length + 1;
+
+      if (updates.content && updates.content !== prev.content) {
+        const rev: DocumentationRevision = {
+          id: "rev-" + Date.now() + "-" + newRevNum,
+          documentationId: id,
+          version: updatedArticle.version || prev.version || "v1.0.0",
+          previousContent: prev.content,
+          updatedContent: updates.content,
+          editorId: editor.id,
+          editorName: editor.username,
+          editorRole: editor.role,
+          revisionNumber: newRevNum,
+          createdAt: now,
+          changeNote: changeNote || "Updated content"
+        };
+        set(KEYS.DOC_REVISIONS, [rev, ...allRevs]);
+      }
+
+      db.logs.add("DOCUMENTATION_MANAGEMENT", `${editor.role} @${editor.username} updated documentation "${updatedArticle.title}"`, editor.username);
+
+      return { success: true, message: `Dokumentasi "${updatedArticle.title}" berhasil diperbarui.`, article: updatedArticle };
+    },
+    delete: (
+      id: string,
+      operatorRole: Role
+    ): { success: boolean; message: string } => {
+      if (operatorRole !== "SUPER_ADMIN" && operatorRole !== "ADMIN") {
+        return { success: false, message: "Akses ditolak: Hanya Super Admin dan Admin yang dapat menghapus dokumentasi." };
+      }
+
+      const all = get<DocumentationArticle[]>(KEYS.DOCUMENTATIONS, DEFAULT_DOC_ARTICLES);
+      const target = all.find(d => d.id === id);
+      if (!target) return { success: false, message: "Dokumentasi tidak ditemukan." };
+
+      const filtered = all.filter(d => d.id !== id);
+      set(KEYS.DOCUMENTATIONS, filtered);
+
+      db.logs.add("DOCUMENTATION_MANAGEMENT", `${operatorRole} deleted documentation "${target.title}"`, "admin");
+      return { success: true, message: `Dokumentasi "${target.title}" berhasil dihapus.` };
+    },
+    publish: (id: string, operatorRole: Role): { success: boolean; message: string } => {
+      if (operatorRole !== "SUPER_ADMIN" && operatorRole !== "ADMIN") {
+        return { success: false, message: "Akses ditolak." };
+      }
+      const all = get<DocumentationArticle[]>(KEYS.DOCUMENTATIONS, DEFAULT_DOC_ARTICLES);
+      const index = all.findIndex(d => d.id === id);
+      if (index === -1) return { success: false, message: "Dokumentasi tidak ditemukan." };
+
+      all[index].status = "PUBLISHED";
+      all[index].publishedAt = new Date().toISOString();
+      all[index].updatedAt = new Date().toISOString();
+      set(KEYS.DOCUMENTATIONS, all);
+      return { success: true, message: `Dokumentasi "${all[index].title}" telah diterbitkan.` };
+    },
+    unpublish: (id: string, operatorRole: Role): { success: boolean; message: string } => {
+      if (operatorRole !== "SUPER_ADMIN" && operatorRole !== "ADMIN") {
+        return { success: false, message: "Akses ditolak." };
+      }
+      const all = get<DocumentationArticle[]>(KEYS.DOCUMENTATIONS, DEFAULT_DOC_ARTICLES);
+      const index = all.findIndex(d => d.id === id);
+      if (index === -1) return { success: false, message: "Dokumentasi tidak ditemukan." };
+
+      all[index].status = "DRAFT";
+      all[index].updatedAt = new Date().toISOString();
+      set(KEYS.DOCUMENTATIONS, all);
+      return { success: true, message: `Dokumentasi "${all[index].title}" ditarik ke draf.` };
+    },
+    restoreRevision: (
+      docId: string,
+      revisionId: string,
+      operatorRole: Role,
+      operatorName: string
+    ): { success: boolean; message: string } => {
+      if (operatorRole !== "SUPER_ADMIN") {
+        return { success: false, message: "Hanya Super Admin yang berwenang memulihkan versi revisi dokumentasi." };
+      }
+      const allRevs = get<DocumentationRevision[]>(KEYS.DOC_REVISIONS, []);
+      const targetRev = allRevs.find(r => r.id === revisionId && r.documentationId === docId);
+      if (!targetRev) return { success: false, message: "Revisi tidak ditemukan." };
+
+      const allDocs = get<DocumentationArticle[]>(KEYS.DOCUMENTATIONS, DEFAULT_DOC_ARTICLES);
+      const docIndex = allDocs.findIndex(d => d.id === docId);
+      if (docIndex === -1) return { success: false, message: "Dokumentasi tidak ditemukan." };
+
+      const prevDoc = allDocs[docIndex];
+      allDocs[docIndex] = {
+        ...prevDoc,
+        content: targetRev.previousContent || targetRev.updatedContent,
+        updatedAt: new Date().toISOString()
+      };
+      set(KEYS.DOCUMENTATIONS, allDocs);
+
+      db.logs.add("DOCUMENTATION_MANAGEMENT", `Super Admin @${operatorName} restored revision #${targetRev.revisionNumber} on "${prevDoc.title}"`, operatorName);
+      return { success: true, message: `Berhasil memulihkan versi revisi #${targetRev.revisionNumber}.` };
+    }
+  },
+
+  docCategories: {
+    getAll: (): DocumentationCategory[] => {
+      return get<DocumentationCategory[]>(KEYS.DOC_CATEGORIES, DEFAULT_DOC_CATEGORIES);
+    },
+    add: (category: DocumentationCategory): { success: boolean; message: string } => {
+      const all = get<DocumentationCategory[]>(KEYS.DOC_CATEGORIES, DEFAULT_DOC_CATEGORIES);
+      if (all.some(c => c.id.toLowerCase() === category.id.toLowerCase() || c.name.toLowerCase() === category.name.toLowerCase())) {
+        return { success: false, message: "Kategori dengan nama atau ID tersebut sudah ada." };
+      }
+      set(KEYS.DOC_CATEGORIES, [...all, category]);
+      return { success: true, message: `Kategori "${category.name}" berhasil ditambahkan.` };
+    },
+    update: (id: string, updates: Partial<DocumentationCategory>): { success: boolean; message: string } => {
+      const all = get<DocumentationCategory[]>(KEYS.DOC_CATEGORIES, DEFAULT_DOC_CATEGORIES);
+      const index = all.findIndex(c => c.id === id);
+      if (index === -1) return { success: false, message: "Kategori tidak ditemukan." };
+      all[index] = { ...all[index], ...updates };
+      set(KEYS.DOC_CATEGORIES, all);
+      return { success: true, message: "Kategori berhasil diperbarui." };
+    },
+    delete: (id: string): { success: boolean; message: string } => {
+      const all = get<DocumentationCategory[]>(KEYS.DOC_CATEGORIES, DEFAULT_DOC_CATEGORIES);
+      set(KEYS.DOC_CATEGORIES, all.filter(c => c.id !== id));
+      return { success: true, message: "Kategori berhasil dihapus." };
+    }
+  },
+
+  docRevisions: {
+    getAll: (): DocumentationRevision[] => {
+      return get<DocumentationRevision[]>(KEYS.DOC_REVISIONS, []);
+    },
+    getByDocId: (docId: string): DocumentationRevision[] => {
+      const all = get<DocumentationRevision[]>(KEYS.DOC_REVISIONS, []);
+      return all.filter(r => r.documentationId === docId).sort((a, b) => b.revisionNumber - a.revisionNumber);
+    }
+  },
+
+  changelogs: {
+    getAll: (): ChangelogRelease[] => {
+      return get<ChangelogRelease[]>(KEYS.CHANGELOGS, DEFAULT_CHANGELOGS);
+    },
+    add: (release: ChangelogRelease): { success: boolean; message: string } => {
+      const all = get<ChangelogRelease[]>(KEYS.CHANGELOGS, DEFAULT_CHANGELOGS);
+      set(KEYS.CHANGELOGS, [release, ...all]);
+      return { success: true, message: `Changelog release "${release.versionNumber}" berhasil ditambahkan.` };
+    },
+    update: (id: string, updates: Partial<ChangelogRelease>): { success: boolean; message: string } => {
+      const all = get<ChangelogRelease[]>(KEYS.CHANGELOGS, DEFAULT_CHANGELOGS);
+      const index = all.findIndex(c => c.id === id);
+      if (index === -1) return { success: false, message: "Release tidak ditemukan." };
+      all[index] = { ...all[index], ...updates };
+      set(KEYS.CHANGELOGS, all);
+      return { success: true, message: "Changelog berhasil diperbarui." };
+    },
+    delete: (id: string): { success: boolean; message: string } => {
+      const all = get<ChangelogRelease[]>(KEYS.CHANGELOGS, DEFAULT_CHANGELOGS);
+      set(KEYS.CHANGELOGS, all.filter(c => c.id !== id));
+      return { success: true, message: "Changelog berhasil dihapus." };
     }
   }
 };
