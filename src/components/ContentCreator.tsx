@@ -100,6 +100,17 @@ export const ContentCreator: React.FC = () => {
     return urlPattern.test(trimmed) || isEmbedPlatform || trimmed.length > 5;
   };
 
+  const isValidMediaUrl = (url: string | null | undefined): boolean => {
+    if (!url || typeof url !== "string") return false;
+    const trimmed = url.trim();
+    if (trimmed.length < 5) return false;
+    return trimmed.startsWith("http://") || 
+           trimmed.startsWith("https://") || 
+           trimmed.startsWith("blob:") || 
+           trimmed.startsWith("data:video/") || 
+           trimmed.startsWith("/");
+  };
+
   const getEmbedIframeSrc = (url: string) => {
     if (!url) return "";
     const trimmed = url.trim();
@@ -705,13 +716,18 @@ export const ContentCreator: React.FC = () => {
     };
   };
 
-  // Automatic video aspect ratio & metadata detection
+  // Automatic video aspect ratio & metadata detection with robust source checking
   useEffect(() => {
     if ((activeMediaTab !== "video" && activeMediaTab !== "photo") || !mediaUrl) return;
 
+    const trimmed = mediaUrl.trim();
+    if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://") && !trimmed.startsWith("blob:") && !trimmed.startsWith("data:") && !trimmed.startsWith("/")) {
+      return;
+    }
+
     if (activeMediaTab === "video") {
       // Detect YouTube Shorts specifically as 9:16
-      if (mediaUrl.includes("/shorts/") || mediaUrl.includes("youtube.com/shorts")) {
+      if (trimmed.includes("/shorts/") || trimmed.includes("youtube.com/shorts")) {
         setVideoAspectRatio("9:16");
         setVideoResolution("1080x1920");
         setVideoDuration("60");
@@ -719,11 +735,16 @@ export const ContentCreator: React.FC = () => {
       }
 
       if (mediaSource !== "EMBED") {
+        const isLikelyVideo = trimmed.match(/\.(mp4|webm|mov|m4v|ogv)($|\?)/i) || trimmed.startsWith("blob:") || trimmed.startsWith("data:video/") || trimmed.startsWith("/renditions/");
+        if (!isLikelyVideo) return;
+
+        let active = true;
         const video = document.createElement("video");
-        video.src = mediaUrl;
-        video.crossOrigin = "anonymous";
+        video.preload = "metadata";
+        video.src = trimmed;
         
         video.onloadedmetadata = () => {
+          if (!active) return;
           const w = video.videoWidth;
           const h = video.videoHeight;
           if (w && h) {
@@ -738,17 +759,29 @@ export const ContentCreator: React.FC = () => {
             
             setVideoAspectRatio(calculatedRatio);
             setVideoResolution(`${w}x${h}`);
-            if (video.duration) {
+            if (video.duration && !isNaN(video.duration)) {
               setVideoDuration(Math.round(video.duration).toString());
             }
           }
         };
+
+        video.onerror = () => {
+          // Gracefully swallow error to prevent console source exception
+        };
+
+        return () => {
+          active = false;
+          video.onloadedmetadata = null;
+          video.onerror = null;
+          video.src = "";
+        };
       }
-    } else if (activeMediaTab === "photo" && mediaUrl) {
+    } else if (activeMediaTab === "photo" && trimmed) {
+      let active = true;
       const img = new Image();
-      img.src = mediaUrl;
-      img.crossOrigin = "anonymous";
+      img.src = trimmed;
       img.onload = () => {
+        if (!active) return;
         const w = img.naturalWidth;
         const h = img.naturalHeight;
         setVideoResolution(`${w}x${h}`);
@@ -757,6 +790,15 @@ export const ContentCreator: React.FC = () => {
         if (Math.abs(ratio - 1) < 0.1) calculatedRatio = "1:1";
         else if (ratio < 0.9) calculatedRatio = "4:5";
         setVideoAspectRatio(calculatedRatio);
+      };
+      img.onerror = () => {
+        // Gracefully swallow photo load error
+      };
+      return () => {
+        active = false;
+        img.onload = null;
+        img.onerror = null;
+        img.src = "";
       };
     }
   }, [mediaUrl, activeMediaTab, mediaSource]);
@@ -1304,8 +1346,18 @@ export const ContentCreator: React.FC = () => {
                                 <div className={`w-full rounded-2xl overflow-hidden border border-slate-800 relative group flex items-center justify-center transition-all duration-300 bg-slate-950/50 ${activeMediaTab === "video" ? "max-w-4xl mx-auto" : ""}`}>
                                   {activeMediaTab === "photo" ? (
                                     <img src={mediaUrl} className="w-full h-auto block max-h-[600px] object-contain" alt="Preview reference" onError={(e) => (e.currentTarget.style.display = 'none')} referrerPolicy="no-referrer" />
+                                  ) : isValidMediaUrl(mediaUrl) ? (
+                                    <video 
+                                      src={mediaUrl} 
+                                      className="w-full h-auto block max-h-[600px] bg-slate-950" 
+                                      muted 
+                                      playsInline 
+                                      onError={(e) => { e.currentTarget.style.display = 'none'; }} 
+                                    />
                                   ) : (
-                                    <video src={mediaUrl} className="w-full h-auto block max-h-[600px] bg-slate-950" muted playsInline />
+                                    <div className="w-full h-32 flex items-center justify-center text-slate-500 font-mono text-xs">
+                                      Masukkan URL video yang valid (.mp4, .webm, atau stream link)
+                                    </div>
                                   )}
                                   <div className="absolute inset-0 bg-slate-950/20 backdrop-blur-[2px] opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all pointer-events-none">
                                     <span className="px-3 py-1.5 bg-slate-900/80 border border-slate-700 rounded-lg text-[10px] font-bold text-slate-300 uppercase tracking-tighter">Remote Stream Live</span>
@@ -1446,7 +1498,13 @@ export const ContentCreator: React.FC = () => {
                                       {activeMediaTab === "photo" ? (
                                         <img src={uploadedBase64 || undefined} className="w-full h-full object-cover" />
                                       ) : (
-                                        <video src={uploadedBase64 || undefined} className="w-full h-full object-cover bg-slate-950" />
+                                        <video 
+                                          src={uploadedBase64 || undefined} 
+                                          className="w-full h-full object-cover bg-slate-950" 
+                                          muted 
+                                          playsInline 
+                                          onError={(e) => { e.currentTarget.style.display = 'none'; }} 
+                                        />
                                       )}
                                       <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover/preview:opacity-100 flex items-center justify-center transition-all backdrop-blur-sm">
                                          <button type="button" onClick={() => setUploadedBase64(null)} className="p-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl transition-all hover:scale-110 shadow-lg shadow-rose-500/20"><Trash2 className="w-5 h-5" /></button>

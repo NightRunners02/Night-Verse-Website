@@ -113,46 +113,61 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   // Database Initialization Logic
   useEffect(() => {
     const startDB = async () => {
-      await initDB();
-      setDbLoaded(true);
-      
-      // Post-init Sync
-      const initialSettings = db.settings.get();
-      setSystemSettings(initialSettings);
-      updateBrowserFavicon(initialSettings.faviconUrl, initialSettings.faviconUpdatedAt);
-
-      // Check backend for stored custom favicon if available
       try {
-        const favRes = await fetch("/api/settings/favicon");
-        if (favRes.ok) {
-          const favData = await favRes.json();
-          if (favData.isCustom && favData.updatedAt > (initialSettings.faviconUpdatedAt || 0)) {
-            db.settings.save({
-              faviconUrl: favData.faviconUrl,
-              faviconUpdatedAt: favData.updatedAt,
-            });
-            const updated = db.settings.get();
-            setSystemSettings(updated);
-            updateBrowserFavicon(updated.faviconUrl, updated.faviconUpdatedAt);
-          }
-        }
-      } catch {
-        // Continue with local storage if server unreachable
+        await initDB();
+      } catch (err) {
+        console.error("NightVerse Storage Init Error:", err);
+      } finally {
+        setDbLoaded(true);
       }
       
-      const storedToken = localStorage.getItem("nv_token");
-      if (storedToken) {
-        const foundUser = db.users.getById(storedToken);
-        if (foundUser) {
-          setUser(foundUser);
-          setToken(storedToken);
-          setActivePath("dashboard");
-        } else {
-          localStorage.removeItem("nv_token");
-          setToken(null);
-          setUser(null);
-          setActivePath("landing");
+      try {
+        // Post-init Sync
+        const initialSettings = db.settings.get();
+        if (initialSettings) {
+          setSystemSettings(initialSettings);
+          if (initialSettings.faviconUrl) {
+            updateBrowserFavicon(initialSettings.faviconUrl, initialSettings.faviconUpdatedAt);
+          }
         }
+
+        // Check backend for stored custom favicon if available
+        try {
+          const favRes = await fetch("/api/settings/favicon");
+          if (favRes.ok) {
+            const favData = await favRes.json();
+            if (favData.isCustom && initialSettings && favData.updatedAt > (initialSettings.faviconUpdatedAt || 0)) {
+              db.settings.save({
+                faviconUrl: favData.faviconUrl,
+                faviconUpdatedAt: favData.updatedAt,
+              });
+              const updated = db.settings.get();
+              if (updated) {
+                setSystemSettings(updated);
+                updateBrowserFavicon(updated.faviconUrl, updated.faviconUpdatedAt);
+              }
+            }
+          }
+        } catch {
+          // Continue with local storage if server unreachable
+        }
+        
+        const storedToken = localStorage.getItem("nv_token");
+        if (storedToken) {
+          const foundUser = db.users.getById(storedToken);
+          if (foundUser) {
+            setUser(foundUser);
+            setToken(storedToken);
+            setActivePath("dashboard");
+          } else {
+            localStorage.removeItem("nv_token");
+            setToken(null);
+            setUser(null);
+            setActivePath("landing");
+          }
+        }
+      } catch (err) {
+        console.error("NightVerse Session Sync Error:", err);
       }
     };
     startDB();

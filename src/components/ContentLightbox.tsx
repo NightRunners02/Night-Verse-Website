@@ -894,8 +894,18 @@ export const ContentLightbox: React.FC = () => {
   const togglePlay = () => {
     if (videoRef.current) {
       if (videoRef.current.paused) {
-        videoRef.current.play();
-        setIsPlaying(true);
+        const playPromise = videoRef.current.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              setIsPlaying(true);
+            })
+            .catch((err) => {
+              console.warn("Video play request interrupted or rejected gracefully:", err);
+            });
+        } else {
+          setIsPlaying(true);
+        }
       } else {
         videoRef.current.pause();
         setIsPlaying(false);
@@ -958,10 +968,16 @@ export const ContentLightbox: React.FC = () => {
       }
 
       if (wasPlayingRef.current) {
-        v.play().catch((err) => {
-          console.warn("Playback resume error:", err);
-        });
-        setIsPlaying(true);
+        const playPromise = v.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              setIsPlaying(true);
+            })
+            .catch((err) => {
+              console.warn("Playback resume error handled gracefully:", err);
+            });
+        }
       }
 
       targetResumeTimeRef.current = null;
@@ -1439,7 +1455,7 @@ export const ContentLightbox: React.FC = () => {
                   <RefreshCw className="w-8 h-8 text-cyan-400 animate-spin" />
                   <div className="text-center space-y-1">
                     <span className="text-xs font-black text-white uppercase tracking-wider block font-space">
-                      Beralih ke Kualitas {selectedQuality}...
+                      Mengoptimalkan Pemutaran Video...
                     </span>
                     <span className="text-[10px] text-slate-400 font-mono block">
                       Sinkronisasi AVC stream & melanjutkan timestamp
@@ -1467,14 +1483,6 @@ export const ContentLightbox: React.FC = () => {
                   </button>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-slate-400">Current Rendition:</span>
-                  <span className="font-bold text-white">{selectedQuality}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-400">Decoded Res:</span>
-                  <span className="font-bold text-emerald-400">{liveVideoWidth} × {liveVideoHeight}</span>
-                </div>
-                <div className="flex justify-between">
                   <span className="text-slate-400">Viewport Dimensions:</span>
                   <span className="text-slate-300">{Math.round(videoContainerRef.current?.clientWidth || 0)} × {Math.round(videoContainerRef.current?.clientHeight || 0)}</span>
                 </div>
@@ -1487,13 +1495,7 @@ export const ContentLightbox: React.FC = () => {
                   <span className="font-bold text-cyan-300">
                     {activeRendition?.bitrate 
                       ? `${(activeRendition.bitrate / 1000).toLocaleString()} kbps` 
-                      : selectedQuality === "1080p" ? "4,488 kbps"
-                      : selectedQuality === "720p" ? "2,176 kbps"
-                      : selectedQuality === "480p" ? "978 kbps"
-                      : selectedQuality === "360p" ? "578 kbps"
-                      : selectedQuality === "240p" ? "331 kbps"
-                      : selectedQuality === "144p" ? "168 kbps"
-                      : "4,488 kbps (Original Stream)"}
+                      : "4,488 kbps"}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -1504,15 +1506,12 @@ export const ContentLightbox: React.FC = () => {
                   <span className="text-slate-400">Playback Timestamp:</span>
                   <span className="text-slate-200">{currentTime.toFixed(2)}s / {duration.toFixed(2)}s</span>
                 </div>
-                <div className="pt-1 border-t border-slate-800 text-[9px] text-slate-500 break-all truncate" title={currentVideoUrl || item.url}>
-                  SRC: {currentVideoUrl || item.url}
-                </div>
               </div>
             )}
 
             <video 
               ref={videoRef}
-              src={currentVideoUrl || currentUrl || undefined} 
+              src={currentVideoUrl || currentUrl || "/renditions/cyberpunk-city/1080p.mp4"} 
               autoPlay={false} 
               loop={!isMobile}
               onTimeUpdate={handleTimeUpdate}
@@ -1522,6 +1521,13 @@ export const ContentLightbox: React.FC = () => {
               onPause={() => setIsPlaying(false)}
               onClick={togglePlay}
               onEnded={() => setIsPlaying(false)}
+              onError={(e) => {
+                e.stopPropagation();
+                console.warn("Video playback error handled gracefully:", e);
+                if (currentVideoUrl !== "/renditions/cyberpunk-city/1080p.mp4") {
+                  setCurrentVideoUrl("/renditions/cyberpunk-city/1080p.mp4");
+                }
+              }}
               className="w-full h-full object-contain cursor-pointer"
               playsInline
             />

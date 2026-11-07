@@ -440,10 +440,13 @@ export const initDB = async (): Promise<void> => {
     const updated = currentVideos.map(v => {
       const hasMockUrls = v.renditions?.every(r => r.url === v.url);
       const isMissingFullRenditions = !v.renditions || v.renditions.length < 6;
-      if (hasMockUrls || isMissingFullRenditions || v.id === "seed-video-cyberpunk") {
+      const isSeed = v.id === "seed-video-cyberpunk";
+      const isMissingUrl = !v.url || typeof v.url !== "string" || !v.url.trim();
+      if (hasMockUrls || isMissingFullRenditions || isSeed || isMissingUrl) {
         modified = true;
         return {
           ...v,
+          url: (isSeed || isMissingUrl) ? DEFAULT_FEATURED_VIDEOS[0].url : v.url,
           codec: "h264 (H.264 / AVC High Profile)",
           processingStatus: "COMPLETED",
           renditions: DEFAULT_FEATURED_VIDEOS[0].renditions

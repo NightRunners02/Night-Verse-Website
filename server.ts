@@ -337,7 +337,7 @@ async function startServer() {
 
           if (!fs.existsSync(outFile)) {
             try {
-              const cmd = `/usr/bin/ffmpeg -y -i "${sourceFile}" -vf "scale=${def.width}:${def.height}:force_original_aspect_ratio=decrease,pad=${def.width}:${def.height}:(ow-iw)/2:(oh-ih)/2,drawtext=text='${def.label}':fontsize=24:fontcolor=white:box=1:boxcolor=black@0.6:x=20:y=20" -c:v libx264 -profile:v high -b:v ${def.bStr} -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart "${outFile}"`;
+              const cmd = `/usr/bin/ffmpeg -y -i "${sourceFile}" -vf "scale=${def.width}:${def.height}:force_original_aspect_ratio=decrease,pad=${def.width}:${def.height}:(ow-iw)/2:(oh-ih)/2" -c:v libx264 -profile:v high -b:v ${def.bStr} -pix_fmt yuv420p -c:a aac -b:a 128k -movflags +faststart "${outFile}"`;
               await new Promise<void>((resolve, reject) => {
                 exec(cmd, (err) => {
                   if (err) reject(err);

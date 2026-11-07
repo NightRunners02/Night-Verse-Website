@@ -1,4 +1,4 @@
-import React from "react";
+import * as React from "react";
 import { AppStateProvider, useAppState } from "./context/AppState.js";
 import { LandingPage } from "./components/LandingPage.js";
 import { AuthPage } from "./components/AuthPage.js";
@@ -197,10 +197,86 @@ const AppRouter: React.FC = () => {
   );
 };
 
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  declare props: ErrorBoundaryProps;
+  declare state: ErrorBoundaryState;
+  declare setState: (state: Partial<ErrorBoundaryState> | ((prevState: ErrorBoundaryState) => Partial<ErrorBoundaryState>)) => void;
+
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.props = props;
+    this.state = {
+      hasError: false,
+      error: null,
+    };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error("NightVerse Error Boundary caught an exception:", error, errorInfo);
+  }
+
+  handleReset = () => {
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch {}
+    window.location.reload();
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-950 text-white flex flex-col items-center justify-center p-6 text-center select-none font-sans">
+          <div className="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center mb-6 shadow-2xl shadow-rose-950/50">
+            <AlertTriangle className="w-8 h-8 text-rose-400" />
+          </div>
+          <h1 className="text-2xl font-black font-space tracking-tight mb-2">
+            NightVerse System Recovery
+          </h1>
+          <p className="text-sm text-slate-400 max-w-md mb-6 leading-relaxed">
+            Terjadi kesalahan tak terduga pada sesi browser Anda. Dapatkan kembali akses penuh ke NightVerse dengan memulihkan status aplikasi.
+          </p>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => this.setState({ hasError: false, error: null })}
+              className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs rounded-xl border border-slate-700 transition-all cursor-pointer"
+            >
+              Coba Lagi
+            </button>
+            <button
+              onClick={this.handleReset}
+              className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl transition-all shadow-lg shadow-purple-900/40 cursor-pointer"
+            >
+              Reset App & Reload
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
 export default function App() {
   return (
-    <AppStateProvider>
-      <AppRouter />
-    </AppStateProvider>
+    <ErrorBoundary>
+      <AppStateProvider>
+        <AppRouter />
+      </AppStateProvider>
+    </ErrorBoundary>
   );
 }
