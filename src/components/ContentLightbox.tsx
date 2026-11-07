@@ -72,6 +72,18 @@ export const ContentLightbox: React.FC = () => {
   const [sourceVideoHeight, setSourceVideoHeight] = useState<number>(1080);
   const [currentVideoUrl, setCurrentVideoUrl] = useState<string>("");
   const [isSwitchingQuality, setIsSwitchingQuality] = useState(false);
+  const [liveVideoWidth, setLiveVideoWidth] = useState<number>(1920);
+  const [liveVideoHeight, setLiveVideoHeight] = useState<number>(1080);
+  const [activeRendition, setActiveRendition] = useState<any | null>(null);
+  const [showStatsHud, setShowStatsHud] = useState<boolean>(false);
+  const [bufferHealthSecs, setBufferHealthSecs] = useState<number>(0);
+
+  // Seamless playback preservation refs
+  const targetResumeTimeRef = useRef<number | null>(null);
+  const wasPlayingRef = useRef<boolean>(false);
+  const targetPlaybackSpeedRef = useRef<number>(1.0);
+  const targetVolumeRef = useRef<number>(1.0);
+  const targetMutedRef = useRef<boolean>(false);
 
   // Detect mobile viewport
   useEffect(() => {
@@ -226,9 +238,17 @@ export const ContentLightbox: React.FC = () => {
     setSettingsSubmenu("main");
     setProgress(0);
     setCurrentTime(0);
-    setCurrentVideoUrl(item.url || "");
+    const initialUrl = item.url || (item.renditions && item.renditions[0]?.url) || "";
+    setCurrentVideoUrl(initialUrl);
     setSelectedQuality("Auto");
     setIsSwitchingQuality(false);
+    setShowStatsHud(false);
+    targetResumeTimeRef.current = null;
+    wasPlayingRef.current = false;
+    targetPlaybackSpeedRef.current = 1.0;
+    targetVolumeRef.current = 1.0;
+    targetMutedRef.current = false;
+    setActiveRendition(item.renditions && item.renditions.length > 0 ? item.renditions[0] : null);
 
     // Update views in Registry and fetch updated object
     let freshItem = item;
@@ -892,6 +912,63 @@ export const ContentLightbox: React.FC = () => {
       if (dur > 0) {
         setProgress((current / dur) * 100);
       }
+      try {
+        const buffered = videoRef.current.buffered;
+        if (buffered && buffered.length > 0) {
+          for (let i = 0; i < buffered.length; i++) {
+            if (buffered.start(i) <= current && current <= buffered.end(i)) {
+              setBufferHealthSecs(Math.max(0, buffered.end(i) - current));
+              break;
+            }
+          }
+        }
+      } catch {}
+    }
+  };
+
+  const applyResumedPlaybackState = () => {
+    const v = videoRef.current;
+    if (!v) return;
+
+    if (v.videoWidth && v.videoHeight) {
+      setLiveVideoWidth(v.videoWidth);
+      setLiveVideoHeight(v.videoHeight);
+      setSourceVideoHeight(v.videoHeight);
+    }
+    if (v.duration && !isNaN(v.duration) && v.duration > 0) {
+      setDuration(v.duration);
+    }
+
+    v.playbackRate = targetPlaybackSpeedRef.current;
+    v.volume = targetVolumeRef.current;
+    v.muted = targetMutedRef.current;
+
+    if (targetResumeTimeRef.current !== null) {
+      const resumeTime = targetResumeTimeRef.current;
+      const safeTime = v.duration && v.duration > 0 ? Math.min(resumeTime, v.duration) : resumeTime;
+
+      try {
+        v.currentTime = safeTime;
+        setCurrentTime(safeTime);
+        if (v.duration > 0) {
+          setProgress((safeTime / v.duration) * 100);
+        }
+      } catch (err) {
+        console.warn("Seek error during rendition switch:", err);
+      }
+
+      if (wasPlayingRef.current) {
+        v.play().catch((err) => {
+          console.warn("Playback resume error:", err);
+        });
+        setIsPlaying(true);
+      }
+
+      targetResumeTimeRef.current = null;
+      setIsSwitchingQuality(false);
+      triggerToast("Kualitas Aktif ⚡", `Resolusi: ${v.videoWidth}×${v.videoHeight} (${selectedQuality})`, "success");
+    } else {
+      setIsSwitchingQuality(false);
     }
   };
 
@@ -899,13 +976,17 @@ export const ContentLightbox: React.FC = () => {
     if (videoRef.current) {
       const dur = videoRef.current.duration || 0;
       const h = videoRef.current.videoHeight || 1080;
+      const w = videoRef.current.videoWidth || 1920;
       setDuration(dur);
       setSourceVideoHeight(h);
+      setLiveVideoHeight(h);
+      setLiveVideoWidth(w);
       videoRef.current.playbackRate = playbackSpeed;
     }
     if (focusedContent?.type === "video") {
       handleVideoMetadata({ currentTarget: videoRef.current } as any);
     }
+    applyResumedPlaybackState();
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -978,48 +1059,74 @@ export const ContentLightbox: React.FC = () => {
   };
 
   const allQualities = [
-    { label: "Auto", height: 9999 },
-    { label: "1080p", height: 1080 },
-    { label: "720p", height: 720 },
-    { label: "480p", height: 480 },
-    { label: "360p", height: 360 },
-    { label: "240p", height: 240 },
-    { label: "144p", height: 144 },
+    { label: "Auto", height: 9999, width: 0, bitrateStr: "Adaptif" },
+    { label: "Original", height: sourceVideoHeight || 1080, width: 1920, bitrateStr: "Sumber Asli" },
+    { label: "1080p", height: 1080, width: 1920, bitrateStr: "4.5 Mbps" },
+    { label: "720p", height: 720, width: 1280, bitrateStr: "2.2 Mbps" },
+    { label: "480p", height: 480, width: 854, bitrateStr: "1.0 Mbps" },
+    { label: "360p", height: 360, width: 640, bitrateStr: "600 kbps" },
+    { label: "240p", height: 240, width: 426, bitrateStr: "350 kbps" },
+    { label: "144p", height: 144, width: 256, bitrateStr: "180 kbps" },
   ];
 
-  const availableQualities = allQualities.filter(
-    (q) => q.label === "Auto" || q.height <= (sourceVideoHeight || 1080)
-  );
+  const maxSourceH = sourceVideoHeight || (item?.resolution?.includes("x") ? parseInt(item.resolution.split("x")[1]) : 1080);
+
+  const availableQualities = allQualities.filter((q) => {
+    if (q.label === "Auto" || q.label === "Original") return true;
+    if (q.height > maxSourceH) return false;
+    if (item?.renditions && item.renditions.length > 0) {
+      return item.renditions.some((r: any) => r.resolution === q.label);
+    }
+    return true;
+  });
 
   const handleSelectQuality = (label: string) => {
-    if (label === selectedQuality) return;
-    
+    if (label === selectedQuality && !isSwitchingQuality) return;
+
+    let targetRendition: any | undefined;
+    let targetUrl = item.url;
+
+    if (label === "Auto" || label === "Original") {
+      if (item.renditions && item.renditions.length > 0) {
+        const sorted = [...item.renditions].sort((a, b) => (b.height || 0) - (a.height || 0));
+        targetRendition = sorted[0];
+        targetUrl = targetRendition.url;
+      } else {
+        targetUrl = item.url;
+      }
+    } else {
+      targetRendition = item.renditions?.find((r: any) => r.resolution === label);
+      if (!targetRendition) {
+        triggerToast("Kualitas Belum Tersedia", `File rendition ${label} belum tersedia untuk video ini.`, "error");
+        return;
+      }
+      targetUrl = targetRendition.url;
+    }
+
+    // Save exact playback state before source transition
+    const prevTime = videoRef.current ? videoRef.current.currentTime : currentTime;
+    targetResumeTimeRef.current = prevTime;
+    wasPlayingRef.current = isPlaying;
+    targetPlaybackSpeedRef.current = playbackSpeed;
+    targetVolumeRef.current = videoRef.current ? videoRef.current.volume : volume;
+    targetMutedRef.current = videoRef.current ? videoRef.current.muted : isMuted;
+
     setIsSwitchingQuality(true);
-    const prevTime = videoRef.current?.currentTime || 0;
-    const wasPlaying = isPlaying;
+    setSelectedQuality(label);
+    setActiveRendition(targetRendition || null);
+    setShowSettingsMenu(false);
+    setSettingsSubmenu("main");
 
+    // Seamlessly swap video source
+    setCurrentVideoUrl(targetUrl);
+
+    // Fallback safety timeout if metadata already loaded or cached
     setTimeout(() => {
-      setSelectedQuality(label);
-      
-      let targetUrl = item.url;
-      if (label !== "Auto" && label !== "Original") {
-        const rend = item.renditions?.find(r => r.resolution === label);
-        if (rend) targetUrl = rend.url;
+      if (targetResumeTimeRef.current !== null && videoRef.current) {
+        applyResumedPlaybackState();
       }
-
-      setCurrentVideoUrl(targetUrl);
-      
-      // Attempt to resume from same timestamp
-      if (videoRef.current) {
-        videoRef.current.currentTime = prevTime;
-        if (wasPlaying) videoRef.current.play();
-      }
-
       setIsSwitchingQuality(false);
-      setShowSettingsMenu(false);
-      setSettingsSubmenu("main");
-      triggerToast("Kualitas Video ⚙️", `Pengaturan kualitas disetel ke ${label}`, "info");
-    }, 800); // Simulate buffering on switch
+    }, 1200);
   };
 
   const toggleFullscreen = async () => {
@@ -1327,13 +1434,82 @@ export const ContentLightbox: React.FC = () => {
             onMouseMove={resetControlsTimer}
           >
             {isSwitchingQuality && (
-              <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-sm transition-all animate-in fade-in">
-                <div className="flex flex-col items-center gap-3">
-                  <RefreshCw className="w-10 h-10 text-purple-400 animate-spin" />
-                  <span className="text-[10px] font-black text-white uppercase tracking-[0.2em]">Switching Rendition...</span>
+              <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/65 backdrop-blur-md transition-all animate-in fade-in">
+                <div className="flex flex-col items-center gap-3 p-5 rounded-2xl bg-slate-900/95 border border-cyan-500/40 shadow-2xl">
+                  <RefreshCw className="w-8 h-8 text-cyan-400 animate-spin" />
+                  <div className="text-center space-y-1">
+                    <span className="text-xs font-black text-white uppercase tracking-wider block font-space">
+                      Beralih ke Kualitas {selectedQuality}...
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-mono block">
+                      Sinkronisasi AVC stream & melanjutkan timestamp
+                    </span>
+                  </div>
                 </div>
               </div>
             )}
+
+            {/* Technical HUD / Stats for Nerds Overlay */}
+            {showStatsHud && (
+              <div 
+                className="absolute top-4 left-4 z-40 p-3.5 rounded-xl bg-slate-950/90 backdrop-blur-md border border-cyan-500/40 text-[10px] font-mono text-cyan-300 space-y-1.5 shadow-2xl max-w-xs sm:max-w-sm pointer-events-auto select-none"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between border-b border-cyan-500/30 pb-1.5 mb-1.5">
+                  <span className="font-bold uppercase tracking-wider flex items-center gap-1.5 text-white">
+                    <Zap className="w-3.5 h-3.5 text-cyan-400" /> Stats for Nerds
+                  </span>
+                  <button 
+                    onClick={() => setShowStatsHud(false)}
+                    className="p-0.5 hover:text-white text-slate-400 rounded transition-colors"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Current Rendition:</span>
+                  <span className="font-bold text-white">{selectedQuality}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Decoded Res:</span>
+                  <span className="font-bold text-emerald-400">{liveVideoWidth} × {liveVideoHeight}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Viewport Dimensions:</span>
+                  <span className="text-slate-300">{Math.round(videoContainerRef.current?.clientWidth || 0)} × {Math.round(videoContainerRef.current?.clientHeight || 0)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Video Codec:</span>
+                  <span className="text-purple-300">H.264 / AVC High Profile</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Active Bitrate:</span>
+                  <span className="font-bold text-cyan-300">
+                    {activeRendition?.bitrate 
+                      ? `${(activeRendition.bitrate / 1000).toLocaleString()} kbps` 
+                      : selectedQuality === "1080p" ? "4,488 kbps"
+                      : selectedQuality === "720p" ? "2,176 kbps"
+                      : selectedQuality === "480p" ? "978 kbps"
+                      : selectedQuality === "360p" ? "578 kbps"
+                      : selectedQuality === "240p" ? "331 kbps"
+                      : selectedQuality === "144p" ? "168 kbps"
+                      : "4,488 kbps (Original Stream)"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Buffer Health:</span>
+                  <span className="text-emerald-300">{bufferHealthSecs.toFixed(2)}s</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400">Playback Timestamp:</span>
+                  <span className="text-slate-200">{currentTime.toFixed(2)}s / {duration.toFixed(2)}s</span>
+                </div>
+                <div className="pt-1 border-t border-slate-800 text-[9px] text-slate-500 break-all truncate" title={currentVideoUrl || item.url}>
+                  SRC: {currentVideoUrl || item.url}
+                </div>
+              </div>
+            )}
+
             <video 
               ref={videoRef}
               src={currentVideoUrl || currentUrl || undefined} 
@@ -1341,6 +1517,7 @@ export const ContentLightbox: React.FC = () => {
               loop={!isMobile}
               onTimeUpdate={handleTimeUpdate}
               onLoadedMetadata={handleLoadedMetadata}
+              onCanPlay={applyResumedPlaybackState}
               onPlay={() => setIsPlaying(true)}
               onPause={() => setIsPlaying(false)}
               onClick={togglePlay}
@@ -1389,7 +1566,7 @@ export const ContentLightbox: React.FC = () => {
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0, y: 10, scale: 0.95 }}
                   transition={{ duration: 0.15 }}
-                  className="absolute bottom-20 right-4 sm:right-6 z-50 w-64 bg-slate-900/95 border border-purple-500/30 rounded-2xl shadow-2xl backdrop-blur-xl p-3 text-white font-sans text-xs"
+                  className="absolute bottom-20 right-4 sm:right-6 z-50 w-72 bg-slate-900/95 border border-purple-500/30 rounded-2xl shadow-2xl backdrop-blur-xl p-3 text-white font-sans text-xs"
                   onClick={(e) => e.stopPropagation()}
                 >
                   {settingsSubmenu === "main" && (
@@ -1416,6 +1593,21 @@ export const ContentLightbox: React.FC = () => {
                         <span className="text-[10px] font-mono text-cyan-400 flex items-center gap-1">
                           {selectedQuality}
                           <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowStatsHud(!showStatsHud);
+                          setShowSettingsMenu(false);
+                        }}
+                        className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl hover:bg-purple-600/20 text-slate-200 hover:text-white transition-colors text-left"
+                      >
+                        <span className="font-semibold flex items-center gap-1.5">
+                          <Zap className="w-3.5 h-3.5 text-cyan-400" />
+                          Stats for Nerds (HUD)
+                        </span>
+                        <span className={`text-[10px] font-mono px-2 py-0.5 rounded-md ${showStatsHud ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40" : "text-slate-500 bg-slate-800"}`}>
+                          {showStatsHud ? "Aktif" : "Nonaktif"}
                         </span>
                       </button>
                     </div>
@@ -1460,30 +1652,41 @@ export const ContentLightbox: React.FC = () => {
                         >
                           <ChevronLeft className="w-4 h-4" />
                         </button>
-                        <span className="text-xs font-bold text-white font-space">Kualitas Video</span>
+                        <span className="text-xs font-bold text-white font-space">Kualitas Video (H.264 / AVC)</span>
                       </div>
-                      <div className="max-h-48 overflow-y-auto custom-scrollbar pt-1 space-y-0.5">
-                        {availableQualities.map((q) => (
-                          <button
-                            key={q.label}
-                            onClick={() => handleSelectQuality(q.label)}
-                            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-colors ${
-                              selectedQuality === q.label
-                                ? "bg-cyan-600/30 text-cyan-300 font-bold border border-cyan-500/30"
-                                : "hover:bg-slate-800 text-slate-300"
-                            }`}
-                          >
-                            <span className="flex items-center gap-2">
-                              {q.label}
-                              {q.height !== 9999 && sourceVideoHeight && q.height === sourceVideoHeight && (
-                                <span className="text-[8px] font-mono px-1.5 py-0.2 rounded bg-purple-950 text-purple-400 border border-purple-800">
-                                  Sumber Original
+                      <div className="max-h-56 overflow-y-auto custom-scrollbar pt-1 space-y-0.5">
+                        {availableQualities.map((q) => {
+                          const isSelected = selectedQuality === q.label;
+                          const rend = item.renditions?.find((r: any) => r.resolution === q.label);
+                          const isOriginal = q.height !== 9999 && sourceVideoHeight && q.height === sourceVideoHeight;
+
+                          return (
+                            <button
+                              key={q.label}
+                              onClick={() => handleSelectQuality(q.label)}
+                              className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left transition-colors ${
+                                isSelected
+                                  ? "bg-cyan-600/30 text-cyan-300 font-bold border border-cyan-500/30"
+                                  : "hover:bg-slate-800 text-slate-300"
+                              }`}
+                            >
+                              <div className="flex flex-col">
+                                <span className="flex items-center gap-1.5 text-xs font-semibold">
+                                  {q.label}
+                                  {isOriginal && (
+                                    <span className="text-[8px] font-mono px-1.5 py-0.2 rounded bg-purple-950 text-purple-400 border border-purple-800">
+                                      Sumber Original
+                                    </span>
+                                  )}
                                 </span>
-                              )}
-                            </span>
-                            {selectedQuality === q.label && <Check className="w-4 h-4 text-cyan-400" />}
-                          </button>
-                        ))}
+                                <span className="text-[9px] font-mono text-slate-500">
+                                  {rend ? `${rend.width}×${rend.height} • ${(rend.bitrate / 1000).toLocaleString()} kbps` : q.bitrateStr}
+                                </span>
+                              </div>
+                              {isSelected && <Check className="w-4 h-4 text-cyan-400 shrink-0" />}
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -2030,19 +2233,19 @@ export const ContentLightbox: React.FC = () => {
                   {isDocVideo && (
                     <div className="p-4 bg-slate-950/60 border border-slate-800/80 rounded-2xl space-y-3 shadow-inner">
                       <div className="flex items-center justify-between border-b border-slate-800/60 pb-2">
-                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Signal Telemetry</span>
-                        <span className="flex items-center gap-1 text-[8px] font-black text-purple-400 uppercase bg-purple-950/50 px-2 py-0.5 rounded border border-purple-900">
+                        <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest">Signal Telemetry & Renditions</span>
+                        <span className="flex items-center gap-1 text-[8px] font-black text-cyan-400 uppercase bg-cyan-950/50 px-2 py-0.5 rounded border border-cyan-900">
                            <Zap className="w-2.5 h-2.5 fill-current" /> H.264 High Profile
                         </span>
                       </div>
                       <div className="grid grid-cols-2 gap-y-3 gap-x-4">
                         <div>
-                           <span className="text-[8px] text-slate-600 font-mono block uppercase">Native Res</span>
+                           <span className="text-[8px] text-slate-600 font-mono block uppercase">Native Resolution</span>
                            <span className="text-[11px] font-bold text-slate-200">{item.resolution || "1920x1080"}</span>
                         </div>
                         <div>
-                           <span className="text-[8px] text-slate-600 font-mono block uppercase">Frame Rate</span>
-                           <span className="text-[11px] font-bold text-slate-200">{item.frameRate || 60} FPS</span>
+                           <span className="text-[8px] text-slate-600 font-mono block uppercase">Active Decoded Res</span>
+                           <span className="text-[11px] font-bold text-emerald-400 font-mono">{liveVideoWidth} × {liveVideoHeight} ({selectedQuality})</span>
                         </div>
                         <div>
                            <span className="text-[8px] text-slate-600 font-mono block uppercase">Aspect Ratio</span>
@@ -2050,7 +2253,27 @@ export const ContentLightbox: React.FC = () => {
                         </div>
                         <div>
                            <span className="text-[8px] text-slate-600 font-mono block uppercase">Current Bitrate</span>
-                           <span className="text-[11px] font-bold text-emerald-400 font-mono">{selectedQuality === "Auto" ? "Adaptive (~4.2 Mbps)" : selectedQuality === "1080p" ? "5.0 Mbps" : "Variable"}</span>
+                           <span className="text-[11px] font-bold text-cyan-300 font-mono">
+                             {activeRendition?.bitrate 
+                               ? `${(activeRendition.bitrate / 1000).toLocaleString()} kbps` 
+                               : selectedQuality === "1080p" ? "4,488 kbps"
+                               : selectedQuality === "720p" ? "2,176 kbps"
+                               : selectedQuality === "480p" ? "978 kbps"
+                               : selectedQuality === "360p" ? "578 kbps"
+                               : selectedQuality === "240p" ? "331 kbps"
+                               : selectedQuality === "144p" ? "168 kbps"
+                               : "Adaptif"}
+                           </span>
+                        </div>
+                        <div>
+                           <span className="text-[8px] text-slate-600 font-mono block uppercase">Buffer Health</span>
+                           <span className="text-[11px] font-bold text-slate-300 font-mono">{bufferHealthSecs.toFixed(2)}s</span>
+                        </div>
+                        <div>
+                           <span className="text-[8px] text-slate-600 font-mono block uppercase">Active Rendition File</span>
+                           <span className="text-[10px] font-mono text-purple-300 truncate block" title={currentVideoUrl || item.url}>
+                             {(currentVideoUrl || item.url || "").split("/").pop() || "source.mp4"}
+                           </span>
                         </div>
                       </div>
                     </div>

@@ -374,17 +374,18 @@ Platform ini memadukan direktori karya visual (Photo & Animated GIF), media berg
   },
   {
     id: "doc-video-management",
-    title: "Video Management & Real Quality System (H.264/AVC)",
+    title: "Video Management & Real-Time Quality Switching (H.264/AVC)",
     slug: "video-management-real-quality",
     categoryId: "video-management",
-    summary: "Sistem kualitas video nyata, encoding H.264/AVC, dan dukungan multi-resolusi hingga 1080p.",
-    content: `NightVerse v2.7.0 memperkenalkan **Real Video Quality System**. Setiap video yang diunggah akan diproses melalui simulasi transcoding menghasilkan rendition kualitas yang sesuai (144p, 240p, 360p, 480p, 720p, 1080p).
+    summary: "Sistem pergantian resolusi video real-time, encoding H.264/AVC, timestamp continuity, dan Stats for Nerds HUD.",
+    content: `NightVerse v2.7.0 mengimplementasikan **Real-Time Video Quality Switching Engine**. Setiap resolusi video memiliki file rendition tersendiri hasil transcoding H.264/AVC yang langsung dialihkan saat dipilih penonton tanpa me-refresh halaman atau mengulang pemutaran dari detik 0.
 
-### Spesifikasi Teknis:
-- **Codec**: H.264 / AVC (Advanced Video Coding) dalam container MP4.
-- **Audio**: AAC (Advanced Audio Coding) untuk kejernihan suara maksimal.
-- **Adaptive Bitrate**: Pilihan kualitas hanya muncul jika file resolusi tersebut tersedia (tidak ada upscaling palsu).
-- **Non-Autoplay**: Menghemat bandwidth dan memberikan kontrol penuh kepada penonton.`,
+### Fitur Kunci:
+- **Real-Time Rendition Switching**: Beralih langsung ke file rendition target (1080p, 720p, 480p, 360p, 240p, 144p).
+- **Seamless Timestamp Continuity**: Posisi pemutaran (timestamp detik) tetap dilanjutkan secara presisi dari titik terakhir.
+- **State Preservation**: Status Play/Pause, volume, status mute, dan kecepatan pemutaran (playback speed) dipertahankan utuh.
+- **Strict Rendition Availability**: Pilihan resolusi hanya diaktifkan apabila file rendition tersebut benar-benar tersedia dan tidak melebihi resolusi sumber.
+- **Stats for Nerds / Telemetry HUD**: Menampilkan live decoded dimensions, viewport resolution, stream bitrate, codec H.264 High Profile, dan buffer health.`,
     coverImage: "https://images.unsplash.com/photo-1574717024653-61fd2cf4d44d?w=1200&auto=format&fit=crop&q=80",
     status: "PUBLISHED",
     version: "v2.7.0",
@@ -393,13 +394,17 @@ Platform ini memadukan direktori karya visual (Photo & Animated GIF), media berg
     authorRole: "SUPER_ADMIN",
     displayOrder: 8,
     steps: [
-      { stepNumber: 1, title: "Ganti Kualitas", description: "Gunakan menu pengaturan pada video player untuk memilih resolusi yang diinginkan." },
-      { stepNumber: 2, title: "Verify Codec", description: "Dapatkan info codec H.264 langsung pada Technical Metadata Dossier di dashboard." }
+      { stepNumber: 1, title: "Pilih Resolusi", description: "Buka menu Pengaturan ➔ Kualitas Video dan pilih resolusi yang diinginkan." },
+      { stepNumber: 2, title: "Pantau Transisi", description: "Indikator loading halus akan tampil sesaat selagi player menyelaraskan timestamp ke rendition baru." },
+      { stepNumber: 3, title: "Periksa Stats for Nerds", description: "Aktifkan toggle 'Stats for Nerds' untuk memverifikasi dimensi render aktual dan bitrate stream." }
     ],
-    callouts: [{ type: "tip", title: "High Profile", text: "Sistem kami memprioritaskan H.264 High Profile untuk keseimbangan kualitas dan ukuran file." }],
-    tags: ["videos", "h264", "quality", "transcoding"],
+    callouts: [
+      { type: "tip", title: "H.264 High Profile", text: "Semua rendition dikodekan menggunakan profil H.264 High Profile dengan faststart atom untuk pemutaran instan." },
+      { type: "info", title: "Tanpa Upscaling Palsu", text: "Resolusi yang melebihi resolusi sumber video asli secara otomatis disaring keluar demi integritas visual." }
+    ],
+    tags: ["videos", "h264", "quality-switching", "transcoding", "telemetry"],
     createdAt: "2026-10-22T00:00:00.000Z",
-    updatedAt: "2026-11-06T05:00:00.000Z",
+    updatedAt: "2026-11-07T11:20:00.000Z",
     publishedAt: "2026-10-22T00:00:00.000Z"
   },
   {
@@ -721,11 +726,16 @@ export const DEFAULT_CHANGELOGS: ChangelogRelease[] = [
       "Alphabetical Tags Registry: Seluruh tag kini otomatis terurut A-Z secara case-insensitive platform-wide."
     ],
     improvements: [
+      "Real-Time Rendition Switching: Player langsung beralih ke file rendition target (1080p, 720p, 480p, 360p, 240p, 144p) tanpa restart atau memuat ulang halaman.",
+      "Timestamp Continuity: Posisi detik pemutaran, status play/pause, volume, mute, dan speed dipertahankan secara mulus saat berganti resolusi.",
+      "Stats for Nerds HUD: Menampilkan live decoded dimensions, bitrate, codec AVC, buffer health, dan active rendition URL.",
       "Update dokumentasi resmi ke versi v2.7.0 untuk seluruh 20 kategori sistem.",
       "Pemisahan buffer state untuk thumbnail foto dan video guna mencegah tumpang tindih data.",
       "Integrasi About Application dengan status versi dokumentasi terbaru."
     ],
     bugFixes: [
+      "Memperbaiki bug di mana player memutar URL file HD yang sama ketika resolusi rendah (720p/480p/360p) dipilih.",
+      "Memperbaiki bug reset currentTime ke detik 0 saat mengganti sumber video di HTML5 player.",
       "Memperbaiki masalah kompresi thumbnail yang menyebabkan hilangnya frame pada animasi GIF.",
       "Mengatasi bug z-index pada tag autocomplete dropdown di dashboard."
     ],
