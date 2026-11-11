@@ -21,6 +21,7 @@ interface AppContextType {
   activeTab: string; 
   targetUserId: string | null;
   navigateTo: (path: string, tab?: string) => void;
+  editUserContent?: (item: any) => void;
   viewProfile: (userId: string) => void;
   dbLoaded: boolean;
   
@@ -409,6 +410,19 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     navigateTo("dashboard", "profile-overview");
   };
 
+  const editUserContent = (item: any) => {
+    if (!user) return;
+    if (item.userId !== user.id && user.role !== "ADMIN" && user.role !== "SUPER_ADMIN") {
+      triggerToast("Akses Ditolak", "Anda hanya dapat mengedit karya milik Anda sendiri.", "error");
+      return;
+    }
+    // Navigate to Creator Dashboard and dispatch custom event for pre-filling edit form
+    navigateTo("dashboard", "creator");
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("nightverse_edit_content", { detail: item }));
+    }, 150);
+  };
+
   const refreshNotifications = async () => {
      if (!user) return;
      const notes = db.notifications.getByUserId(user.id, user.role);
@@ -680,6 +694,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         activeTab,
         targetUserId,
         navigateTo,
+        editUserContent,
         viewProfile,
         dbLoaded,
         notifications,

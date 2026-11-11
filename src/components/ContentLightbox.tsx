@@ -1,13 +1,13 @@
-import React, { useState, useEffect, useRef } from "react";
-import { X, Heart, MessageSquare, CornerDownRight, Check, UserPlus, Eye, Clock, Monitor, AlertTriangle, RefreshCw, Globe, Plus, Star, Bookmark, Share2, Link, Download, MoreHorizontal, ChevronLeft, ChevronRight, Maximize2, Minimize2, Info, Users, Play, Pause, Volume2, VolumeX, Settings, SquareStack, SkipForward, SkipBack, Flag, Layers, Lock, Unlock, MessageSquareOff, RotateCcw, RotateCw, Zap } from "lucide-react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import { X, Heart, MessageSquare, CornerDownRight, Check, UserPlus, Eye, Clock, Monitor, AlertTriangle, RefreshCw, Globe, Plus, Star, Bookmark, Share2, Link, Download, MoreHorizontal, ChevronLeft, ChevronRight, Maximize2, Minimize2, Info, Users, Play, Pause, Volume2, VolumeX, Settings, SquareStack, SkipForward, SkipBack, Flag, Layers, Lock, Unlock, MessageSquareOff, RotateCcw, RotateCw, Zap, Edit3 } from "lucide-react";
 import { useAppState } from "../context/AppState.js";
 import { motion, AnimatePresence } from "motion/react";
-import { db } from "../lib/db.js";
+import { db, DEFAULT_FEATURED_VIDEOS } from "../lib/db.js";
 import { getAspectRatioClass } from "./ContentCreator.js";
 import { RoleBadge, BadgeType } from "./RoleBadge.js";
 
 export const ContentLightbox: React.FC = () => {
-  const { focusedContent, setFocusedContent, token, user, triggerToast, createNotification, viewProfile, followActionCount, toggleFollow, triggerDBSync, triggerSearch, navigateTo, dbActionCount } = useAppState();
+  const { focusedContent, setFocusedContent, token, user, triggerToast, createNotification, viewProfile, followActionCount, toggleFollow, triggerDBSync, triggerSearch, navigateTo, dbActionCount, editUserContent } = useAppState();
   const [comments, setComments] = useState<any[]>([]);
   const [commentText, setCommentText] = useState("");
   const [hasLiked, setHasLiked] = useState(false);
@@ -619,13 +619,14 @@ export const ContentLightbox: React.FC = () => {
   };
 
   const handleMore = () => {
-    setIsReporting(true);
-    setIsCommentsOpen(true);
-    triggerToast(
-      "Moderation Opened ⋮",
-      "Use options to report or flag content guidelines breaches.",
-      "info"
-    );
+    setIsReporting((prev) => !prev);
+    if (!isReporting) {
+      triggerToast(
+        "Form Pelaporan Terbuka 🚩",
+        "Pilih kategori pelanggaran untuk mengirim laporan ke tim moderasi.",
+        "info"
+      );
+    }
   };
 
   const submitReport = () => {
@@ -943,7 +944,7 @@ export const ContentLightbox: React.FC = () => {
     if (v.videoWidth && v.videoHeight) {
       setLiveVideoWidth(v.videoWidth);
       setLiveVideoHeight(v.videoHeight);
-      setSourceVideoHeight(v.videoHeight);
+      setSourceVideoHeight((prev) => Math.max(prev, v.videoHeight));
     }
     if (v.duration && !isNaN(v.duration) && v.duration > 0) {
       setDuration(v.duration);
@@ -957,32 +958,35 @@ export const ContentLightbox: React.FC = () => {
       const resumeTime = targetResumeTimeRef.current;
       const safeTime = v.duration && v.duration > 0 ? Math.min(resumeTime, v.duration) : resumeTime;
 
-      try {
-        v.currentTime = safeTime;
-        setCurrentTime(safeTime);
-        if (v.duration > 0) {
-          setProgress((safeTime / v.duration) * 100);
+      // Only attempt to set currentTime if readyState is at least HAVE_METADATA (1)
+      if (v.readyState >= 1) {
+        try {
+          v.currentTime = safeTime;
+          setCurrentTime(safeTime);
+          if (v.duration > 0) {
+            setProgress((safeTime / v.duration) * 100);
+          }
+        } catch (err) {
+          console.warn("Seek error during rendition switch:", err);
         }
-      } catch (err) {
-        console.warn("Seek error during rendition switch:", err);
-      }
 
-      if (wasPlayingRef.current) {
-        const playPromise = v.play();
-        if (playPromise !== undefined) {
-          playPromise
-            .then(() => {
-              setIsPlaying(true);
-            })
-            .catch((err) => {
-              console.warn("Playback resume error handled gracefully:", err);
-            });
+        if (wasPlayingRef.current) {
+          const playPromise = v.play();
+          if (playPromise !== undefined) {
+            playPromise
+              .then(() => {
+                setIsPlaying(true);
+              })
+              .catch((err) => {
+                console.warn("Playback resume error handled gracefully:", err);
+              });
+          }
         }
-      }
 
-      targetResumeTimeRef.current = null;
-      setIsSwitchingQuality(false);
-      triggerToast("Kualitas Aktif ⚡", `Resolusi: ${v.videoWidth}×${v.videoHeight} (${selectedQuality})`, "success");
+        targetResumeTimeRef.current = null;
+        setIsSwitchingQuality(false);
+        triggerToast("Kualitas Aktif ⚡", `Resolusi: ${v.videoWidth}×${v.videoHeight} (${selectedQuality})`, "success");
+      }
     } else {
       setIsSwitchingQuality(false);
     }
@@ -994,7 +998,7 @@ export const ContentLightbox: React.FC = () => {
       const h = videoRef.current.videoHeight || 1080;
       const w = videoRef.current.videoWidth || 1920;
       setDuration(dur);
-      setSourceVideoHeight(h);
+      setSourceVideoHeight((prev) => Math.max(prev, h));
       setLiveVideoHeight(h);
       setLiveVideoWidth(w);
       videoRef.current.playbackRate = playbackSpeed;
@@ -1074,27 +1078,40 @@ export const ContentLightbox: React.FC = () => {
     setSettingsSubmenu("main");
   };
 
-  const allQualities = [
+  const maxSourceH = useMemo(() => {
+    let maxH = 1080;
+    if (item?.resolution && item.resolution.includes("x")) {
+      const parsed = parseInt(item.resolution.split("x")[1], 10);
+      if (!isNaN(parsed) && parsed > 0) maxH = parsed;
+    }
+    if (item?.renditions && Array.isArray(item.renditions) && item.renditions.length > 0) {
+      const rendMax = Math.max(...item.renditions.map((r: any) => r.height || 0));
+      if (rendMax > 0) maxH = Math.max(maxH, rendMax);
+    }
+    return Math.max(maxH, sourceVideoHeight || 0);
+  }, [item, sourceVideoHeight]);
+
+  const allQualities = useMemo(() => [
     { label: "Auto", height: 9999, width: 0, bitrateStr: "Adaptif" },
-    { label: "Original", height: sourceVideoHeight || 1080, width: 1920, bitrateStr: "Sumber Asli" },
+    { label: "Original", height: maxSourceH, width: 1920, bitrateStr: "Sumber Asli" },
     { label: "1080p", height: 1080, width: 1920, bitrateStr: "4.5 Mbps" },
     { label: "720p", height: 720, width: 1280, bitrateStr: "2.2 Mbps" },
     { label: "480p", height: 480, width: 854, bitrateStr: "1.0 Mbps" },
     { label: "360p", height: 360, width: 640, bitrateStr: "600 kbps" },
     { label: "240p", height: 240, width: 426, bitrateStr: "350 kbps" },
     { label: "144p", height: 144, width: 256, bitrateStr: "180 kbps" },
-  ];
+  ], [maxSourceH]);
 
-  const maxSourceH = sourceVideoHeight || (item?.resolution?.includes("x") ? parseInt(item.resolution.split("x")[1]) : 1080);
-
-  const availableQualities = allQualities.filter((q) => {
-    if (q.label === "Auto" || q.label === "Original") return true;
-    if (q.height > maxSourceH) return false;
-    if (item?.renditions && item.renditions.length > 0) {
-      return item.renditions.some((r: any) => r.resolution === q.label);
-    }
-    return true;
-  });
+  const availableQualities = useMemo(() => {
+    return allQualities.filter((q) => {
+      if (q.label === "Auto" || q.label === "Original") return true;
+      if (q.height > maxSourceH) return false;
+      if (item?.renditions && item.renditions.length > 0) {
+        return item.renditions.some((r: any) => r.resolution === q.label);
+      }
+      return true;
+    });
+  }, [allQualities, maxSourceH, item?.renditions]);
 
   const handleSelectQuality = (label: string) => {
     if (label === selectedQuality && !isSwitchingQuality) return;
@@ -1102,16 +1119,20 @@ export const ContentLightbox: React.FC = () => {
     let targetRendition: any | undefined;
     let targetUrl = item.url;
 
+    const availableRends = (item?.renditions && item.renditions.length > 0)
+      ? item.renditions
+      : (DEFAULT_FEATURED_VIDEOS[0]?.renditions || []);
+
     if (label === "Auto" || label === "Original") {
-      if (item.renditions && item.renditions.length > 0) {
-        const sorted = [...item.renditions].sort((a, b) => (b.height || 0) - (a.height || 0));
+      if (availableRends.length > 0) {
+        const sorted = [...availableRends].sort((a, b) => (b.height || 0) - (a.height || 0));
         targetRendition = sorted[0];
         targetUrl = targetRendition.url;
       } else {
-        targetUrl = item.url;
+        targetUrl = item.url || "/renditions/cyberpunk-city/1080p.mp4";
       }
     } else {
-      targetRendition = item.renditions?.find((r: any) => r.resolution === label);
+      targetRendition = availableRends.find((r: any) => r.resolution === label);
       if (!targetRendition) {
         triggerToast("Kualitas Belum Tersedia", `File rendition ${label} belum tersedia untuk video ini.`, "error");
         return;
@@ -1133,8 +1154,20 @@ export const ContentLightbox: React.FC = () => {
     setShowSettingsMenu(false);
     setSettingsSubmenu("main");
 
+    // Pause first to safely conclude any pending play requests before reloading
+    if (videoRef.current) {
+      try {
+        videoRef.current.pause();
+      } catch {}
+    }
+
     // Seamlessly swap video source
     setCurrentVideoUrl(targetUrl);
+
+    if (videoRef.current) {
+      videoRef.current.src = targetUrl;
+      videoRef.current.load();
+    }
 
     // Fallback safety timeout if metadata already loaded or cached
     setTimeout(() => {
@@ -1142,7 +1175,7 @@ export const ContentLightbox: React.FC = () => {
         applyResumedPlaybackState();
       }
       setIsSwitchingQuality(false);
-    }, 1200);
+    }, 4000);
   };
 
   const toggleFullscreen = async () => {
@@ -1306,6 +1339,14 @@ export const ContentLightbox: React.FC = () => {
   };
 
   const renderMobileActionButtons = () => {
+    const isOwnerOrAdmin = isOwner || isAdmin;
+    const handleEditClick = () => {
+      setFocusedContent(null);
+      if (editUserContent) {
+        editUserContent({ ...item, type });
+      }
+    };
+
     const actions = [
       { id: 'like', icon: Heart, label: likesCount, active: hasLiked, color: "text-rose-400", onClick: handleLike },
       { id: 'fav', icon: Star, label: favoritesCount, active: hasFavorited, color: "text-amber-400", onClick: handleFavorite },
@@ -1316,21 +1357,32 @@ export const ContentLightbox: React.FC = () => {
     ];
 
     return (
-      <div className="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-2 grid grid-cols-3 gap-1.5 mb-4 backdrop-blur-sm">
-        {actions.map((act) => (
+      <div className="space-y-2 mb-4">
+        {isOwnerOrAdmin && (
           <button
-            key={act.id}
-            onClick={act.onClick}
-            className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all active:scale-90 ${
-              act.active 
-                ? "bg-purple-600/20 border-purple-500/50 text-white shadow-inner" 
-                : "bg-slate-900/40 border-slate-800/60 text-slate-400 hover:bg-slate-800 hover:text-white"
-            }`}
+            onClick={handleEditClick}
+            className="w-full py-3 px-4 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-2xl font-bold text-xs uppercase tracking-wider shadow-lg shadow-purple-950/40 flex items-center justify-center gap-2 transition-transform active:scale-95 cursor-pointer"
           >
-            <act.icon className={`w-3.5 h-3.5 mb-1 ${act.active ? "text-white" : act.color}`} />
-            <span className="text-[9px] font-extrabold font-mono">{act.label}</span>
+            <Edit3 className="w-4 h-4 text-white" />
+            <span>Edit {isDocVideo ? "Video" : isDocPhoto ? "Photo" : "Blog"}</span>
           </button>
-        ))}
+        )}
+        <div className="bg-slate-900/40 border border-slate-800/60 rounded-2xl p-2 grid grid-cols-3 gap-1.5 backdrop-blur-sm">
+          {actions.map((act) => (
+            <button
+              key={act.id}
+              onClick={act.onClick}
+              className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all active:scale-90 ${
+                act.active 
+                  ? "bg-purple-600/20 border-purple-500/50 text-white shadow-inner" 
+                  : "bg-slate-900/40 border-slate-800/60 text-slate-400 hover:bg-slate-800 hover:text-white"
+              }`}
+            >
+              <act.icon className={`w-3.5 h-3.5 mb-1 ${act.active ? "text-white" : act.color}`} />
+              <span className="text-[9px] font-extrabold font-mono">{act.label}</span>
+            </button>
+          ))}
+        </div>
       </div>
     );
   };
@@ -1523,9 +1575,12 @@ export const ContentLightbox: React.FC = () => {
               onEnded={() => setIsPlaying(false)}
               onError={(e) => {
                 e.stopPropagation();
-                console.warn("Video playback error handled gracefully:", e);
-                if (currentVideoUrl !== "/renditions/cyberpunk-city/1080p.mp4") {
-                  setCurrentVideoUrl("/renditions/cyberpunk-city/1080p.mp4");
+                const mediaErr = videoRef.current?.error;
+                console.warn("Video playback error handled gracefully:", mediaErr || e);
+                if (mediaErr && mediaErr.code === 4 && !isSwitchingQuality) {
+                  if (currentVideoUrl !== "/renditions/cyberpunk-city/1080p.mp4") {
+                    setCurrentVideoUrl("/renditions/cyberpunk-city/1080p.mp4");
+                  }
                 }
               }}
               className="w-full h-full object-contain cursor-pointer"
@@ -2306,6 +2361,18 @@ export const ContentLightbox: React.FC = () => {
 
                   {/* Actions */}
                   <div className="flex gap-2">
+                    {(isOwner || isAdmin) && (
+                      <button 
+                        onClick={() => {
+                          setFocusedContent(null);
+                          if (editUserContent) editUserContent({ ...item, type });
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl border border-purple-500/60 bg-purple-600/30 text-purple-200 text-[10px] font-bold uppercase tracking-wider hover:bg-purple-600/50 transition-all cursor-pointer shadow-lg shadow-purple-950/20 active:scale-95"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-purple-300" />
+                        Edit {isDocVideo ? "Video" : isDocPhoto ? "Photo" : "Blog"}
+                      </button>
+                    )}
                     <button 
                       onClick={handleFavorite}
                       className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-xl border text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer ${
@@ -2335,10 +2402,15 @@ export const ContentLightbox: React.FC = () => {
                     )}
                     <button 
                       onClick={handleMore}
-                      className="p-2 rounded-xl border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-750 transition-all cursor-pointer"
-                      title="Report"
+                      className={`p-2 rounded-xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
+                        isReporting 
+                          ? "bg-rose-500/20 border-rose-500 text-rose-400 shadow-lg shadow-rose-950/30" 
+                          : "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-750 hover:text-rose-400 hover:border-slate-600"
+                      }`}
+                      title="Laporkan Konten (Report)"
+                      aria-label="Laporkan Konten"
                     >
-                      <Flag className="w-4 h-4 text-rose-400" />
+                      <Flag className={`w-4 h-4 text-rose-400 transition-transform ${isReporting ? "fill-current scale-110" : ""}`} />
                     </button>
                   </div>
 
@@ -2568,6 +2640,20 @@ export const ContentLightbox: React.FC = () => {
               {/* Compact Toolbar - placed exactly below the Views Info */}
               <div className="w-full border-t border-slate-800/40 pt-2">
                 <div className="flex items-center gap-3 overflow-x-auto scrollbar-none pb-0.5 custom-scrollbar">
+                  {/* ✏️ Edit (Owner / Admin) */}
+                  {(isOwner || isAdmin) && (
+                    <button 
+                      onClick={() => {
+                        setFocusedContent(null);
+                        if (editUserContent) editUserContent({ ...item, type });
+                      }}
+                      className="flex items-center justify-center gap-1.5 px-3 py-1.5 bg-purple-600/30 border border-purple-500/60 text-purple-200 hover:bg-purple-600/50 rounded-xl transition-all active:scale-95 cursor-pointer shrink-0 font-bold"
+                    >
+                      <Edit3 className="w-4 h-4 text-purple-300" />
+                      <span className="text-[10px] font-bold">Edit {isDocVideo ? "Video" : isDocPhoto ? "Photo" : "Blog"}</span>
+                    </button>
+                  )}
+
                   {/* ❤️ Like */}
                   <button 
                     onClick={handleLike}
@@ -3131,6 +3217,7 @@ export const ContentLightbox: React.FC = () => {
             {renderDesktopRightPanel({ height: "85vh" })}
           </motion.div>
 
+          {renderMobileReportModal()}
         </motion.div>
       </AnimatePresence>
     );
@@ -3169,6 +3256,8 @@ export const ContentLightbox: React.FC = () => {
             <X className="w-5 h-5 group-hover:rotate-90 transition-transform duration-300" />
           </button>
         </motion.div>
+
+        {renderMobileReportModal()}
       </motion.div>
     </AnimatePresence>
   );

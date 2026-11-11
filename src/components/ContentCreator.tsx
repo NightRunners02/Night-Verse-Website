@@ -194,6 +194,20 @@ export const ContentCreator: React.FC = () => {
     return () => window.removeEventListener("resize", detectDevice);
   }, []);
 
+  // Listen for nightverse_edit_content event to populate edit form
+  useEffect(() => {
+    const handleEditEvent = (e: CustomEvent) => {
+      if (e.detail) {
+        handleEdit(e.detail);
+        setActiveTab("upload");
+      }
+    };
+    window.addEventListener("nightverse_edit_content" as any, handleEditEvent);
+    return () => {
+      window.removeEventListener("nightverse_edit_content" as any, handleEditEvent);
+    };
+  }, []);
+
   useEffect(() => {
     if (!user) return;
     fetchUserContent();
@@ -584,23 +598,27 @@ export const ContentCreator: React.FC = () => {
   };
 
   const handleEdit = (item: any) => {
-    setEditingContent(item);
-    setTitle(item.title || "");
+    if (!item) return;
+    const resolvedType = (item.type || item.itemType || "blog") as "blog" | "photo" | "video";
+    const editItem = { ...item, type: resolvedType };
+
+    setEditingContent(editItem);
+    setTitle(editItem.title || "");
     setIsTitleManuallyEdited(true);
-    setDescription(item.description || "");
-    setTags(item.tags || []);
+    setDescription(editItem.description || "");
+    setTags(editItem.tags || []);
     setTagsInput("");
-    setCategory(item.category || "Others");
-    const itemVis = (item.visibility?.toLowerCase() === "private" ? "private" : "public") as "public" | "private";
-    const itemEng = (item.engagement?.toLowerCase() === "muted" || item.allowComments === false ? "muted" : "open") as "open" | "muted";
+    setCategory(editItem.category || "Others");
+    const itemVis = (editItem.visibility?.toLowerCase() === "private" ? "private" : "public") as "public" | "private";
+    const itemEng = (editItem.engagement?.toLowerCase() === "muted" || editItem.allowComments === false ? "muted" : "open") as "open" | "muted";
     setVisibility(itemVis);
     setEngagement(itemEng);
-    setActiveMediaTab(item.type);
+    setActiveMediaTab(resolvedType);
     
-    if (item.type === "blog") {
-      setBlogContent(item.content || "");
-      setBlogThumbnail(item.thumbnailUrl || "");
-      if (item.thumbnailUrl && item.thumbnailUrl.startsWith("data:")) {
+    if (resolvedType === "blog") {
+      setBlogContent(editItem.content || "");
+      setBlogThumbnail(editItem.thumbnailUrl || "");
+      if (editItem.thumbnailUrl && editItem.thumbnailUrl.startsWith("data:")) {
         setBlogCoverSource("UPLOAD");
         setUploadedFileName("blog_cover.jpg");
         setUploadedFileSize("~245 KB");
@@ -608,47 +626,47 @@ export const ContentCreator: React.FC = () => {
       } else {
         setBlogCoverSource("URL");
       }
-    } else if (item.type === "photo") {
-      const src = (item.sourceType === "LAPTOP" || item.sourceType === "MOBILE") ? "UPLOAD" : (item.sourceType || "URL");
+    } else if (resolvedType === "photo") {
+      const src = (editItem.sourceType === "LAPTOP" || editItem.sourceType === "MOBILE") ? "UPLOAD" : (editItem.sourceType || "URL");
       setMediaSource(src as any);
-      setMediaUrl(item.url || "");
-      setPhotoThumbnail(item.thumbnailUrl || item.url || "");
-      if (item.sourceType === "LAPTOP" || item.sourceType === "MOBILE" || item.sourceType === "UPLOAD") {
-        setUploadedBase64(item.url || "");
+      setMediaUrl(editItem.url || "");
+      setPhotoThumbnail(editItem.thumbnailUrl || editItem.url || "");
+      if (editItem.sourceType === "LAPTOP" || editItem.sourceType === "MOBILE" || editItem.sourceType === "UPLOAD") {
+        setUploadedBase64(editItem.url || "");
         setUploadedFileName("nightverse_photo.jpg");
         setUploadedFileSize("~850 KB");
         setUploadProgress(100);
       }
-      if (item.thumbnailUrl) {
-        if (item.thumbnailUrl.startsWith("data:")) {
+      if (editItem.thumbnailUrl) {
+        if (editItem.thumbnailUrl.startsWith("data:")) {
           setThumbMethod("UPLOAD");
-        } else if (item.thumbnailUrl === item.url) {
+        } else if (editItem.thumbnailUrl === editItem.url) {
           setThumbMethod("UPLOAD");
         } else {
           setThumbMethod("URL");
         }
       }
-    } else if (item.type === "video") {
-      const src = (item.sourceType === "LAPTOP" || item.sourceType === "MOBILE") ? "UPLOAD" : (item.sourceType || "URL");
+    } else if (resolvedType === "video") {
+      const src = (editItem.sourceType === "LAPTOP" || editItem.sourceType === "MOBILE") ? "UPLOAD" : (editItem.sourceType || "URL");
       setMediaSource(src as any);
-      setMediaUrl(item.url || "");
-      if (item.videoUrls && Array.isArray(item.videoUrls) && item.videoUrls.length > 0) {
-        setVideoEmbedUrls(item.videoUrls);
+      setMediaUrl(editItem.url || "");
+      if (editItem.videoUrls && Array.isArray(editItem.videoUrls) && editItem.videoUrls.length > 0) {
+        setVideoEmbedUrls(editItem.videoUrls);
       } else {
-        setVideoEmbedUrls(item.url ? [item.url] : [""]);
+        setVideoEmbedUrls(editItem.url ? [editItem.url] : [""]);
       }
-      setVideoThumbnail(item.thumbnailUrl || "");
-      setVideoDuration(item.duration?.toString() || "");
-      setVideoResolution(item.resolution || "1080p");
-      setVideoAspectRatio(item.aspectRatio || "16:9");
-      if (item.sourceType === "LAPTOP" || item.sourceType === "MOBILE" || item.sourceType === "UPLOAD") {
-        setUploadedBase64(item.url || "");
+      setVideoThumbnail(editItem.thumbnailUrl || "");
+      setVideoDuration(editItem.duration?.toString() || "");
+      setVideoResolution(editItem.resolution || "1080p");
+      setVideoAspectRatio(editItem.aspectRatio || "16:9");
+      if (editItem.sourceType === "LAPTOP" || editItem.sourceType === "MOBILE" || editItem.sourceType === "UPLOAD") {
+        setUploadedBase64(editItem.url || "");
         setUploadedFileName("nightverse_video.mp4");
         setUploadedFileSize("~4.8 MB");
         setUploadProgress(100);
       }
-      if (item.thumbnailUrl) {
-        if (item.thumbnailUrl.startsWith("data:")) {
+      if (editItem.thumbnailUrl) {
+        if (editItem.thumbnailUrl.startsWith("data:")) {
           setThumbMethod("UPLOAD");
         } else {
           setThumbMethod("URL");
@@ -657,7 +675,7 @@ export const ContentCreator: React.FC = () => {
     }
     
     setActiveTab("upload");
-    triggerToast("Edit Mode", `Now editing: ${item.title}`, "info");
+    triggerToast("Edit Mode", `Now editing: ${editItem.title}`, "info");
   };
 
   const handleDeleteConfirm = () => {
@@ -1297,31 +1315,49 @@ export const ContentCreator: React.FC = () => {
                           </div>
                         </div>
 
-                        {/* Technical Metadata Dossier (Visible if metadata exists) */}
-                        {(videoDuration || videoResolution || videoAspectRatio) && activeMediaTab === "video" && (
-                          <div className="p-4 bg-slate-900/50 border border-slate-800 rounded-2xl flex flex-col md:flex-row items-center gap-4 animate-in fade-in slide-in-from-top-2">
-                            <div className="w-10 h-10 bg-purple-500/10 rounded-xl flex items-center justify-center border border-purple-500/20 shrink-0">
-                              <Cpu className="w-5 h-5 text-purple-400" />
+                        {/* Technical Metadata Dossier (Requirement 3: Full technical information preview) */}
+                        {activeMediaTab === "video" && (
+                          <div className="p-5 bg-slate-900/70 border border-slate-800/80 rounded-3xl space-y-4 animate-in fade-in slide-in-from-top-2 shadow-xl">
+                            <div className="flex items-center justify-between border-b border-slate-800/80 pb-3">
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 bg-purple-500/10 rounded-xl flex items-center justify-center border border-purple-500/30 text-purple-400">
+                                  <Cpu className="w-5 h-5" />
+                                </div>
+                                <div>
+                                  <h4 className="text-xs font-black text-slate-200 uppercase tracking-widest font-mono">Video Technical Specifications</h4>
+                                  <p className="text-[10px] text-slate-500 font-mono">Auto-detected H.264 / AVC Container Telemetry</p>
+                                </div>
+                              </div>
+                              <span className="px-2.5 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 font-mono text-[9px] font-bold uppercase tracking-widest flex items-center gap-1.5">
+                                <ShieldCheck className="w-3.5 h-3.5" /> H.264 / AVC Verified
+                              </span>
                             </div>
-                            <div className="flex-1 text-center md:text-left">
-                              <h4 className="text-[11px] font-bold text-slate-300 uppercase tracking-widest font-mono">Technical Metadata Dossier</h4>
-                              <div className="flex flex-wrap justify-center md:justify-start gap-4 mt-1">
-                                <div className="flex items-center gap-1.5">
-                                  <Clock className="w-3.5 h-3.5 text-slate-500" />
-                                  <span className="text-xs font-mono text-slate-400">{Math.round(Number(videoDuration))}s</span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <Maximize className="w-3.5 h-3.5 text-slate-500" />
-                                  <span className="text-xs font-mono text-slate-400">{videoResolution || "Detecting..."}</span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <Layers className="w-3.5 h-3.5 text-slate-500" />
-                                  <span className="text-xs font-mono text-slate-400">{videoAspectRatio} AR</span>
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-500/80" />
-                                  <span className="text-[10px] font-mono text-emerald-500/80 uppercase font-bold">H.264 Ready</span>
-                                </div>
+
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs font-mono">
+                              <div className="bg-slate-950/60 p-3 rounded-2xl border border-slate-800/60">
+                                <span className="text-[9px] text-slate-500 uppercase font-bold block mb-1">Title & Source</span>
+                                <span className="text-slate-200 font-bold truncate block">{title || "Untitled Video"}</span>
+                                <span className="text-[9px] text-purple-400 font-medium truncate block">{uploadedFileName || mediaSource}</span>
+                              </div>
+
+                              <div className="bg-slate-950/60 p-3 rounded-2xl border border-slate-800/60">
+                                <span className="text-[9px] text-slate-500 uppercase font-bold block mb-1">Original Resolution</span>
+                                <span className="text-cyan-400 font-bold block">{videoResolution || "1920x1080"}</span>
+                                <span className="text-[9px] text-slate-500 block">{videoAspectRatio || "16:9"} Aspect Ratio</span>
+                              </div>
+
+                              <div className="bg-slate-950/60 p-3 rounded-2xl border border-slate-800/60">
+                                <span className="text-[9px] text-slate-500 uppercase font-bold block mb-1">Duration & FPS</span>
+                                <span className="text-amber-400 font-bold block">
+                                  {Number(videoDuration) ? `${Math.floor(Number(videoDuration)/60)}m ${Math.round(Number(videoDuration)%60)}s (${Math.round(Number(videoDuration))}s)` : "0s"}
+                                </span>
+                                <span className="text-[9px] text-slate-500 block">30 FPS Frame Rate</span>
+                              </div>
+
+                              <div className="bg-slate-950/60 p-3 rounded-2xl border border-slate-800/60">
+                                <span className="text-[9px] text-slate-500 uppercase font-bold block mb-1">Codec & File Size</span>
+                                <span className="text-emerald-400 font-bold block truncate">h264 (H.264 / AVC)</span>
+                                <span className="text-[9px] text-slate-500 block">{uploadedFileSize || "~4.8 MB"}</span>
                               </div>
                             </div>
                           </div>

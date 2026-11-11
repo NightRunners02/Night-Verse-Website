@@ -55,7 +55,8 @@ import {
   Key,
   Filter,
   CheckCheck,
-  User as UserIcon
+  User as UserIcon,
+  Grid
 } from "lucide-react";
 import { useAppState } from "../context/AppState.js";
 import type { User, SystemSettings, BadgeDefinition, UserBadgeAward, BadgeCategory, SupportTicket, TicketMessage } from "../types.js";
@@ -3598,6 +3599,54 @@ export const AdminWorkspace: React.FC = () => {
                       <span className="text-[10px] text-slate-400 block font-sans mt-0.5">ON: Seluruh media visual pada kartu Curated Creator Masterpieces menjadi blur. OFF: Normal.</span>
                     </div>
                   </label>
+                </div>
+
+                {/* Explore Feed Items Per Page Setting */}
+                <div className="pt-3 border-t border-slate-800/80 space-y-2.5">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <span className="font-bold text-white block font-space text-xs flex items-center gap-1.5">
+                        <Grid className="w-3.5 h-3.5 text-purple-400" /> Maksimal Konten Explore per Halaman
+                      </span>
+                      <span className="text-[10px] text-slate-400 block font-sans mt-0.5">
+                        Mengatur batas maksimum kartu media yang ditampilkan per halaman di Explore Feed (default: 12).
+                      </span>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-purple-300 px-2.5 py-1 bg-purple-950/60 border border-purple-500/40 rounded-lg shadow-sm">
+                      {localSettings.exploreItemsPerPage || 12} Konten / Hal
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-1 flex-wrap">
+                    {[6, 8, 12, 16, 20, 24, 36, 48].map((num) => (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => setLocalSettings(prev => ({ ...prev, exploreItemsPerPage: num }))}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                          (localSettings.exploreItemsPerPage || 12) === num
+                            ? "bg-purple-600 text-white shadow-md shadow-purple-900/40 border border-purple-400 scale-105"
+                            : "bg-slate-900 hover:bg-slate-800 text-slate-400 border border-slate-800 hover:text-white"
+                        }`}
+                      >
+                        {num}
+                      </button>
+                    ))}
+                    <div className="flex items-center gap-1.5 ml-auto">
+                      <span className="text-[10px] font-mono text-slate-500">Custom:</span>
+                      <input 
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={localSettings.exploreItemsPerPage || 12}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 12;
+                          setLocalSettings(prev => ({ ...prev, exploreItemsPerPage: Math.max(1, Math.min(100, val)) }));
+                        }}
+                        className="w-16 bg-slate-900 border border-slate-800 rounded-lg py-1 px-2 text-center text-xs font-mono text-white focus:outline-none focus:border-purple-500"
+                      />
+                    </div>
+                  </div>
                 </div>
 
               </div>

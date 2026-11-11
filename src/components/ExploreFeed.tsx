@@ -27,7 +27,8 @@ import {
   Video,
   Camera,
   FileText,
-  MessageSquareOff
+  MessageSquareOff,
+  Edit3
 } from "lucide-react";
 import { useAppState } from "../context/AppState.js";
 import { motion, AnimatePresence } from "motion/react";
@@ -80,8 +81,10 @@ interface ExploreCardProps {
 }
 
 const ExploreCard: React.FC<ExploreCardProps> = ({ item, onSelect, onAdminDelete }) => {
-  const { user, viewProfile, triggerToast } = useAppState();
+  const { user, viewProfile, triggerToast, editUserContent } = useAppState();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const isOwnerOrAdmin = user && (item.userId === user.id || user.role === "ADMIN" || user.role === "SUPER_ADMIN" || user.role === "MODERATOR");
 
   const toggleMenu = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -158,16 +161,29 @@ const ExploreCard: React.FC<ExploreCardProps> = ({ item, onSelect, onAdminDelete
           <>
             <div className="fixed inset-0 z-30" onClick={(e) => { e.stopPropagation(); setIsMenuOpen(false); }} />
             <div className="absolute right-2 top-11 w-44 bg-slate-950/95 border border-slate-800 rounded-xl shadow-2xl z-40 py-1 text-[11px] font-mono animate-in fade-in zoom-in-95 duration-100 backdrop-blur-md">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setIsMenuOpen(false);
-                  onSelect();
-                }}
-                className="w-full text-left px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-900/60 flex items-center gap-2 transition-colors"
-              >
-                <ExternalLink className="w-3.5 h-3.5 text-purple-400" /> Open Details
-              </button>
+              {isOwnerOrAdmin ? (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsMenuOpen(false);
+                    if (editUserContent) editUserContent(item);
+                  }}
+                  className="w-full text-left px-3 py-2 text-purple-300 hover:text-white hover:bg-purple-950/40 flex items-center gap-2 transition-colors font-bold"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-purple-400" /> Edit Video
+                </button>
+              ) : (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsMenuOpen(false);
+                    onSelect();
+                  }}
+                  className="w-full text-left px-3 py-2 text-slate-300 hover:text-white hover:bg-slate-900/60 flex items-center gap-2 transition-colors"
+                >
+                  <ExternalLink className="w-3.5 h-3.5 text-purple-400" /> Open Details
+                </button>
+              )}
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -248,7 +264,7 @@ const ExploreCard: React.FC<ExploreCardProps> = ({ item, onSelect, onAdminDelete
 };
 
 export const ExploreFeed: React.FC = () => {
-  const { user, triggerToast, setFocusedContent, viewProfile, followActionCount, toggleFollow, dbActionCount } = useAppState();
+  const { user, triggerToast, setFocusedContent, viewProfile, followActionCount, toggleFollow, dbActionCount, systemSettings } = useAppState();
 
   const [activeSegment, setActiveSegment] = useState<"ALL" | "BLOG" | "PHOTO" | "VIDEO">("ALL");
   const [filterQuery, setFilterQuery] = useState("");
@@ -427,6 +443,34 @@ export const ExploreFeed: React.FC = () => {
     }
     return matchFuzzy;
   });
+
+  // Items per page configured dynamically in System Settings (default: 12)
+  const itemsPerPage = systemSettings?.exploreItemsPerPage || 12;
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Automatically reset to page 1 whenever filters, search, or pagination limit changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [activeSegment, filterQuery, selectedTags, sortBy, itemsPerPage]);
+
+  const totalItems = processedItems.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / itemsPerPage));
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  const startIndex = (safeCurrentPage - 1) * itemsPerPage;
+  const endIndex = Math.min(startIndex + itemsPerPage, totalItems);
+
+  const paginatedItems = useMemo(() => {
+    return processedItems.slice(startIndex, endIndex);
+  }, [processedItems, startIndex, endIndex]);
+
+  const handlePageChange = (newPage: number) => {
+    const clamped = Math.min(Math.max(1, newPage), totalPages);
+    setCurrentPage(clamped);
+    const feedShell = document.getElementById("explore-feed-shell");
+    if (feedShell) {
+      feedShell.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
 
   // Smart Tag Search - Filter available tags matching tagSearchQuery
   const matchedTags = availableTags.filter(t => 
@@ -794,7 +838,7 @@ export const ExploreFeed: React.FC = () => {
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6" id="explore-uniform-grid">
-          {processedItems.map((item) => (
+          {paginatedItems.map((item) => (
             <ExploreCard 
               key={`${item.itemType}-${item.id}`}
               item={item}
@@ -802,6 +846,105 @@ export const ExploreFeed: React.FC = () => {
               onAdminDelete={(e) => startAdminDelete(e, item)}
             />
           ))}
+        </div>
+      )}
+
+      {/* Pagination Controls & Showing Range Bar */}
+      {totalItems > 0 && (
+        <div className="pt-5 pb-8 flex flex-col items-center justify-center gap-3.5 border-t border-slate-850/80 text-xs font-mono select-none" id="explore-pagination-bar">
+          {/* Showing Range & Total Count (e.g. Page 1/10 and showing range) */}
+          <div className="flex items-center justify-center gap-2 text-slate-400 text-[11px] flex-wrap text-center">
+            <span>
+              Showing <strong className="text-white font-bold">{totalItems === 0 ? 0 : startIndex + 1}–{endIndex}</strong> of <strong className="text-white font-bold">{totalItems}</strong> items
+            </span>
+            <span className="text-slate-600">•</span>
+            <span className="px-2.5 py-0.5 rounded-lg bg-purple-950/60 border border-purple-500/40 text-purple-300 font-bold">
+              Page {safeCurrentPage} / {totalPages}
+            </span>
+          </div>
+
+          {/* Navigation icons: << < [pages] > >> */}
+          <div className="flex items-center justify-center gap-1.5 flex-wrap">
+            {/* << First Page */}
+            <button
+              type="button"
+              onClick={() => handlePageChange(1)}
+              disabled={safeCurrentPage <= 1}
+              className="p-2 rounded-xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800 hover:border-slate-700 text-slate-300 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer active:scale-95 shadow-sm"
+              title="Halaman Pertama (First Page)"
+              aria-label="First Page"
+            >
+              <ChevronsLeft className="w-4 h-4 text-purple-400" />
+            </button>
+
+            {/* < Previous Page */}
+            <button
+              type="button"
+              onClick={() => handlePageChange(safeCurrentPage - 1)}
+              disabled={safeCurrentPage <= 1}
+              className="p-2 rounded-xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800 hover:border-slate-700 text-slate-300 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer active:scale-95 shadow-sm"
+              title="Halaman Sebelumnya (Previous Page)"
+              aria-label="Previous Page"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            {/* Numbered Page Buttons */}
+            <div className="flex items-center gap-1 px-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum: number;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (safeCurrentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (safeCurrentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = safeCurrentPage - 2 + i;
+                }
+
+                const isActive = pageNum === safeCurrentPage;
+                return (
+                  <button
+                    key={pageNum}
+                    type="button"
+                    onClick={() => handlePageChange(pageNum)}
+                    className={`min-w-[34px] h-8 px-2 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer ${
+                      isActive
+                        ? "bg-purple-600 text-white shadow-lg shadow-purple-900/50 border border-purple-400 scale-105"
+                        : "bg-slate-900/80 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800"
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* > Next Page */}
+            <button
+              type="button"
+              onClick={() => handlePageChange(safeCurrentPage + 1)}
+              disabled={safeCurrentPage >= totalPages}
+              className="p-2 rounded-xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800 hover:border-slate-700 text-slate-300 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer active:scale-95 shadow-sm"
+              title="Halaman Selanjutnya (Next Page)"
+              aria-label="Next Page"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+
+            {/* >> Last Page */}
+            <button
+              type="button"
+              onClick={() => handlePageChange(totalPages)}
+              disabled={safeCurrentPage >= totalPages}
+              className="p-2 rounded-xl border border-slate-800 bg-slate-900/80 hover:bg-slate-800 hover:border-slate-700 text-slate-300 hover:text-white disabled:opacity-30 disabled:pointer-events-none transition-all cursor-pointer active:scale-95 shadow-sm"
+              title="Halaman Terakhir (Last Page)"
+              aria-label="Last Page"
+            >
+              <ChevronsRight className="w-4 h-4 text-purple-400" />
+            </button>
+          </div>
         </div>
       )}
 

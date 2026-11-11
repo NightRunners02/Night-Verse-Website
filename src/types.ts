@@ -301,6 +301,7 @@ export interface SystemSettings {
   enablePushNotifications: boolean;
   enableRealtimeStream: boolean;
   creatorMasterpiecesBlur: boolean;
+  exploreItemsPerPage?: number;
   mediaApproval?: MediaApprovalSettings;
 }
 

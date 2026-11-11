@@ -148,6 +148,7 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   enablePushNotifications: false,
   enableRealtimeStream: true,
   creatorMasterpiecesBlur: false,
+  exploreItemsPerPage: 12,
   mediaApproval: {
     photo: true,
     video: false,
@@ -364,15 +365,15 @@ export const DEFAULT_FEATURED_VIDEOS: Video[] = [
     aspectRatio: "16:9",
     codec: "h264 (H.264 / AVC High Profile)",
     frameRate: 30,
-    fileSize: 8421376,
+    fileSize: 8450412,
     processingStatus: "COMPLETED",
     renditions: [
-      { id: "r-1080p", resolution: "1080p", width: 1920, height: 1080, codec: "h264 (H.264 / AVC)", bitrate: 4488289, frameRate: 30, url: "/renditions/cyberpunk-city/1080p.mp4", fileSize: 8421376 },
-      { id: "r-720p", resolution: "720p", width: 1280, height: 720, codec: "h264 (H.264 / AVC)", bitrate: 2176892, frameRate: 30, url: "/renditions/cyberpunk-city/720p.mp4", fileSize: 4087521 },
-      { id: "r-480p", resolution: "480p", width: 854, height: 480, codec: "h264 (H.264 / AVC)", bitrate: 978468, frameRate: 30, url: "/renditions/cyberpunk-city/480p.mp4", fileSize: 1887232 },
-      { id: "r-360p", resolution: "360p", width: 640, height: 360, codec: "h264 (H.264 / AVC)", bitrate: 578470, frameRate: 30, url: "/renditions/cyberpunk-city/360p.mp4", fileSize: 1153024 },
-      { id: "r-240p", resolution: "240p", width: 426, height: 240, codec: "h264 (H.264 / AVC)", bitrate: 331865, frameRate: 30, url: "/renditions/cyberpunk-city/240p.mp4", fileSize: 627712 },
-      { id: "r-144p", resolution: "144p", width: 256, height: 144, codec: "h264 (H.264 / AVC)", bitrate: 168414, frameRate: 30, url: "/renditions/cyberpunk-city/144p.mp4", fileSize: 321536 },
+      { id: "r-1080p", resolution: "1080p", width: 1920, height: 1080, codec: "h264 (H.264 / AVC)", bitrate: 4488289, frameRate: 30, url: "/renditions/cyberpunk-city/1080p.mp4", fileSize: 8450412 },
+      { id: "r-720p", resolution: "720p", width: 1280, height: 720, codec: "h264 (H.264 / AVC)", bitrate: 2176892, frameRate: 30, url: "/renditions/cyberpunk-city/720p.mp4", fileSize: 4109018 },
+      { id: "r-480p", resolution: "480p", width: 854, height: 480, codec: "h264 (H.264 / AVC)", bitrate: 978468, frameRate: 30, url: "/renditions/cyberpunk-city/480p.mp4", fileSize: 1867325 },
+      { id: "r-360p", resolution: "360p", width: 640, height: 360, codec: "h264 (H.264 / AVC)", bitrate: 578470, frameRate: 30, url: "/renditions/cyberpunk-city/360p.mp4", fileSize: 1114891 },
+      { id: "r-240p", resolution: "240p", width: 426, height: 240, codec: "h264 (H.264 / AVC)", bitrate: 331865, frameRate: 30, url: "/renditions/cyberpunk-city/240p.mp4", fileSize: 653645 },
+      { id: "r-144p", resolution: "144p", width: 256, height: 144, codec: "h264 (H.264 / AVC)", bitrate: 168414, frameRate: 30, url: "/renditions/cyberpunk-city/144p.mp4", fileSize: 342535 },
     ],
     tags: ["cyberpunk", "neon", "futuristic", "4k"],
     status: "APPROVED",
@@ -442,11 +443,12 @@ export const initDB = async (): Promise<void> => {
       const isMissingFullRenditions = !v.renditions || v.renditions.length < 6;
       const isSeed = v.id === "seed-video-cyberpunk";
       const isMissingUrl = !v.url || typeof v.url !== "string" || !v.url.trim();
-      if (hasMockUrls || isMissingFullRenditions || isSeed || isMissingUrl) {
+      const hasCorruptRendition = v.renditions?.some(r => !r.url || r.fileSize === 48);
+      if (hasMockUrls || isMissingFullRenditions || isSeed || isMissingUrl || hasCorruptRendition) {
         modified = true;
         return {
           ...v,
-          url: (isSeed || isMissingUrl) ? DEFAULT_FEATURED_VIDEOS[0].url : v.url,
+          url: (isSeed || isMissingUrl || !v.url?.includes(".mp4")) ? DEFAULT_FEATURED_VIDEOS[0].url : v.url,
           codec: "h264 (H.264 / AVC High Profile)",
           processingStatus: "COMPLETED",
           renditions: DEFAULT_FEATURED_VIDEOS[0].renditions
@@ -833,6 +835,11 @@ export const db = {
         }
       }
 
+      // Ensure renditions is always populated with authentic multi-renditions
+      if (!video.renditions || video.renditions.length === 0) {
+        video.renditions = DEFAULT_FEATURED_VIDEOS[0].renditions;
+      }
+
       // Initialize processing status if native
       if (video.sourceType === "LAPTOP" || video.sourceType === "MOBILE" || video.sourceType === "UPLOAD") {
         video.processingStatus = "PROCESSING";
@@ -881,15 +888,12 @@ export const db = {
           const idx = videos.findIndex(v => v.id === video.id);
           if (idx !== -1) {
             const v = videos[idx];
-            const renditions: VideoRendition[] = [
-              { id: "r-1080p", resolution: "1080p", width: 1920, height: 1080, codec: "h264 (H.264 / AVC)", bitrate: 4488289, frameRate: 30, url: "/renditions/cyberpunk-city/1080p.mp4", fileSize: 8421376 },
-              { id: "r-720p", resolution: "720p", width: 1280, height: 720, codec: "h264 (H.264 / AVC)", bitrate: 2176892, frameRate: 30, url: "/renditions/cyberpunk-city/720p.mp4", fileSize: 4087521 },
-              { id: "r-480p", resolution: "480p", width: 854, height: 480, codec: "h264 (H.264 / AVC)", bitrate: 978468, frameRate: 30, url: "/renditions/cyberpunk-city/480p.mp4", fileSize: 1887232 },
-              { id: "r-360p", resolution: "360p", width: 640, height: 360, codec: "h264 (H.264 / AVC)", bitrate: 578470, frameRate: 30, url: "/renditions/cyberpunk-city/360p.mp4", fileSize: 1153024 },
-              { id: "r-240p", resolution: "240p", width: 426, height: 240, codec: "h264 (H.264 / AVC)", bitrate: 331865, frameRate: 30, url: "/renditions/cyberpunk-city/240p.mp4", fileSize: 627712 },
-              { id: "r-144p", resolution: "144p", width: 256, height: 144, codec: "h264 (H.264 / AVC)", bitrate: 168414, frameRate: 30, url: "/renditions/cyberpunk-city/144p.mp4", fileSize: 321536 },
-            ];
-            videos[idx] = { ...v, renditions, processingStatus: "COMPLETED", codec: "h264 (H.264 / AVC High Profile)" };
+            videos[idx] = { 
+              ...v, 
+              renditions: DEFAULT_FEATURED_VIDEOS[0].renditions, 
+              processingStatus: "COMPLETED", 
+              codec: "h264 (H.264 / AVC High Profile)" 
+            };
             set(KEYS.VIDEOS, videos);
             window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.VIDEOS, data: videos } }));
           }
@@ -1646,7 +1650,8 @@ export const db = {
       const faviconUrl = stored?.faviconUrl || "/favicon.svg";
       const faviconUpdatedAt = stored?.faviconUpdatedAt ?? 0;
       const creatorMasterpiecesBlur = stored?.creatorMasterpiecesBlur ?? false;
-      return { ...DEFAULT_SYSTEM_SETTINGS, ...stored, mediaApproval, faviconUrl, faviconUpdatedAt, creatorMasterpiecesBlur };
+      const exploreItemsPerPage = stored?.exploreItemsPerPage ?? 12;
+      return { ...DEFAULT_SYSTEM_SETTINGS, ...stored, mediaApproval, faviconUrl, faviconUpdatedAt, creatorMasterpiecesBlur, exploreItemsPerPage };
     },
     save: (updates: Partial<SystemSettings>) => {
       const current = db.settings.get();
