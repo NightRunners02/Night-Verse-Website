@@ -13,8 +13,6 @@ import {
   Youtube, 
   Instagram, 
   Github, 
-  Sun, 
-  Moon,
   Heart,
   MessageSquare,
   Eye,
@@ -192,7 +190,7 @@ const TrendingCard: React.FC<TrendingCardProps> = ({ item, onSelect }) => {
 };
 
 export const LandingPage: React.FC = () => {
-  const { navigateTo, toggleTheme, theme, setFocusedContent, systemSettings } = useAppState();
+  const { navigateTo, setFocusedContent, systemSettings } = useAppState();
   
   // Real stats data trackers
   const [stats, setStats] = useState({ users: 0, photos: 0, videos: 0, blogs: 0, tags: 0 });
@@ -369,17 +367,6 @@ export const LandingPage: React.FC = () => {
 
           {/* Action Navigation lists */}
           <div className="flex items-center gap-1.5 md:gap-4">
-            
-            {/* Light/Dark dynamic switcher */}
-            <button 
-              onClick={toggleTheme} 
-              className="p-1.5 w-7 h-7 md:w-9 md:h-9 rounded-lg md:rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/40 hover:bg-slate-50 dark:hover:bg-slate-900 transition-all cursor-pointer text-slate-600 dark:text-slate-300 flex items-center justify-center"
-              title="Toggle application look"
-              id="btn-nav-theme-toggle"
-            >
-              {theme === "dark" ? <Sun className="w-3.5 h-3.5 md:w-5 md:h-5 text-amber-500" /> : <Moon className="w-3.5 h-3.5 md:w-5 md:h-5 text-indigo-600" />}
-            </button>
-
             <button 
               onClick={() => navigateTo("auth")}
               className="hidden sm:block text-[10px] md:text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-900/65 py-2 px-4 rounded-xl border border-slate-200 dark:border-slate-800 transition-all cursor-pointer"

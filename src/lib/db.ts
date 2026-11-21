@@ -7,34 +7,20 @@ import {
 } from "../types.js";
 import { hashPassword } from "./crypto.js";
 import { DEFAULT_DOC_CATEGORIES, DEFAULT_DOC_ARTICLES, DEFAULT_CHANGELOGS } from "./defaultDocs.js";
+import {
+  STORAGE_KEYS,
+  hydrateAllFromSupabase,
+  pushInitialSnapshotToSupabase,
+  scheduleSupabaseSync,
+} from "./supabaseSync.js";
 
 // Keys for Storage
-const KEYS = {
-  USERS: "nv_users",
-  PROFILES: "nv_profiles",
-  BLOGS: "nv_blogs",
-  PHOTOS: "nv_photos",
-  VIDEOS: "nv_videos",
-  TAGS: "nv_tags",
-  NOTIFICATIONS: "nv_notifications",
-  COMMENTS: "nv_comments",
-  FOLLOWS: "nv_follows",
-  REPORTS: "nv_reports",
-  LOGS: "nv_logs",
-  SYSTEM_SETTINGS: "nv_system_settings",
-  BADGES: "nv_badges",
-  BADGE_AWARDS: "nv_badge_awards",
-  DOCUMENTATIONS: "nv_documentations",
-  DOC_CATEGORIES: "nv_doc_categories",
-  DOC_REVISIONS: "nv_doc_revisions",
-  CHANGELOGS: "nv_changelogs",
-  SUPPORT_TICKETS: "nv_support_tickets",
-  TICKET_MESSAGES: "nv_ticket_messages"
-};
+const KEYS = STORAGE_KEYS;
 
 // Memory Cache for Synchronous Access
 const CACHE: Record<string, any> = {};
 let dbInitialized = false;
+let suppressRemoteSync = false;
 
 // Simple IDB wrapper for large data sets
 const IDB_NAME = "NightVerseDB";
@@ -120,6 +106,11 @@ const set = <T>(key: string, data: T): void => {
     // Large items like photos/videos/blogs are now IDB-exclusive
     // We clear them from localStorage to free up space
     localStorage.removeItem(key);
+  }
+
+  // 4. Async Diff Sync to Supabase REST API
+  if (!suppressRemoteSync) {
+    scheduleSupabaseSync(key, data);
   }
 };
 
@@ -388,20 +379,37 @@ export const DEFAULT_FEATURED_VIDEOS: Video[] = [
   }
 ];
 
-// Initialize Database (Async loading from IDB)
+// Initialize Database (Async loading from IDB + Supabase Hydration)
 export const initDB = async (): Promise<void> => {
   if (dbInitialized) return;
-  
-  // 1. Load all data from IndexedDB into Cache
+
+  // 1. Load local baseline from IndexedDB into Cache
   const allKeys = Object.values(KEYS);
   await Promise.all(allKeys.map(async (key) => {
     const val = await idb.get(key);
-    if (val !== null) {
+    if (val !== null && val !== undefined) {
       CACHE[key] = val;
     }
   }));
 
-  // 2. Initial Seed if needed
+  // 2. Hydrate live state from Supabase REST API (authoritative when schema is ready)
+  const remoteReport = await hydrateAllFromSupabase();
+  if (remoteReport.connected && remoteReport.remoteHasCoreSeed) {
+    suppressRemoteSync = true;
+    try {
+      for (const key of remoteReport.loadedKeys) {
+        const remoteVal = remoteReport.dataByKey[key];
+        if (remoteVal !== undefined) {
+          CACHE[key] = remoteVal;
+          await idb.set(key, remoteVal);
+        }
+      }
+    } finally {
+      suppressRemoteSync = false;
+    }
+  }
+
+  // 3. Initial Seed / Upgrade Check if needed
   const existingUsers = get<User[]>(KEYS.USERS, []);
   if (!existingUsers || existingUsers.length === 0) {
     set(KEYS.USERS, DEFAULT_USERS);
@@ -444,7 +452,7 @@ export const initDB = async (): Promise<void> => {
       const isSeed = v.id === "seed-video-cyberpunk";
       const isMissingUrl = !v.url || typeof v.url !== "string" || !v.url.trim();
       const hasCorruptRendition = v.renditions?.some(r => !r.url || r.fileSize === 48);
-      if (hasMockUrls || isMissingFullRenditions || isSeed || isMissingUrl || hasCorruptRendition) {
+      if (hasMockUrls || isMissingFullRenditions || isMissingUrl || hasCorruptRendition) {
         modified = true;
         return {
           ...v,
@@ -569,7 +577,7 @@ export const initDB = async (): Promise<void> => {
       if (idx === -1) {
         currentDocs.push(defDoc);
         docsModified = true;
-      } else if (new Date(defDoc.updatedAt).getTime() >= new Date(currentDocs[idx].updatedAt).getTime()) {
+      } else if (new Date(defDoc.updatedAt).getTime() > new Date(currentDocs[idx].updatedAt).getTime()) {
         currentDocs[idx] = defDoc;
         docsModified = true;
       }
@@ -587,9 +595,6 @@ export const initDB = async (): Promise<void> => {
       const idx = currentChangelogs.findIndex(c => c.id === defCl.id || c.versionNumber === defCl.versionNumber);
       if (idx === -1) {
         currentChangelogs.unshift(defCl);
-        changelogsModified = true;
-      } else {
-        currentChangelogs[idx] = defCl;
         changelogsModified = true;
       }
     });
@@ -610,7 +615,14 @@ export const initDB = async (): Promise<void> => {
     });
     if (catsModified) set(KEYS.DOC_CATEGORIES, currentCats);
   }
-  
+
+  // 4. Push any seeded or upgraded defaults back to Supabase if connected
+  if (remoteReport.connected) {
+    pushInitialSnapshotToSupabase(CACHE).catch((err) => {
+      console.warn("[NightVerse Supabase] Background seed sync warning:", err);
+    });
+  }
+
   dbInitialized = true;
 };
 
