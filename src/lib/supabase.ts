@@ -1,9 +1,9 @@
 // NightVerse Supabase REST API Integration Layer
 // Connects directly to Supabase PostgREST (/rest/v1/) with zero external SDK overhead
 
-const DEFAULT_SUPABASE_URL = "https://njrwobbhtcotaxvqqkpz.supabase.co";
+const DEFAULT_SUPABASE_URL = "https://mzxwpbvtxxlmapvjkxlc.supabase.co";
 const DEFAULT_SUPABASE_ANON_KEY =
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5qcndvYmJodGNvdGF4dnFxa3B6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUyODM1NDcsImV4cCI6MjExMDg1OTU0N30.UA03ZnDEGxPRZJmD0NHkE8S_7bJHRoIaTntTju-ErnE";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im16eHdwYnZ0eHhsbWFwdmpreGxjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTU1MzMxNjksImV4cCI6MjExMTEwOTE2OX0.xD_R-TbfedhoWerX3m6nzaMvo128mH9rCGweCF42Ob0";
 
 const rawEnv = ((import.meta as any)?.env || {}) as Record<string, string | undefined>;
 
