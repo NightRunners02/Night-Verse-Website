@@ -2,7 +2,9 @@ import React, { createContext, useContext, useState, useEffect } from "react";
 import { 
   User, Blog, Photo, Video, Tag, Notification, Comment, SystemSettings, ToastAlert, Role, ContentStatus, SourceType 
 } from "../types.js";
-import { db, initDB } from "../lib/db.js";
+import { db, initDB, refreshDB } from "../lib/db.js";
+import { subscribeToSupabaseRealtime } from "../lib/supabase.js";
+import { STORAGE_KEYS } from "../lib/supabaseSync.js";
 import { updateBrowserFavicon, validateFaviconFile, DEFAULT_FAVICON_URL } from "../lib/favicon.js";
 
 // Initialize local database handled inside AppStateProvider
@@ -15,7 +17,7 @@ interface AppContextType {
   token: string | null;
   login: (userData: any, sessionToken: string) => void;
   logout: () => void;
-  updateLocalProfile: (updatedProfile: any) => void;
+  updateLocalProfile: (updatedProfile: any, updatedUsername?: string) => void;
   setActiveBadge: (badgeId: string | null) => Promise<void>;
   activePath: string; 
   activeTab: string; 
@@ -69,7 +71,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [dbLoaded, setDbLoaded] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(localStorage.getItem("nv_token"));
+  const [token, setToken] = useState<string | null>(() => {
+    try { return sessionStorage.getItem("nv_token"); } catch { return null; }
+  });
   const [activePath, setActivePath] = useState<string>("landing");
   const [activeTab, setActiveTab] = useState<string>("explore");
   const [targetUserId, setTargetUserId] = useState<string | null>(null);
@@ -104,6 +108,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     enableEmailVerification: true,
     enablePushNotifications: false,
     enableRealtimeStream: true,
+    enableFloatingToasts: true,
     mediaApproval: {
       photo: true,
       video: false,
@@ -153,7 +158,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           // Continue with local storage if server unreachable
         }
         
-        const storedToken = localStorage.getItem("nv_token");
+        const storedToken = sessionStorage.getItem("nv_token");
         if (storedToken) {
           const foundUser = db.users.getById(storedToken);
           if (foundUser) {
@@ -161,7 +166,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             setToken(storedToken);
             setActivePath("dashboard");
           } else {
-            localStorage.removeItem("nv_token");
+            sessionStorage.removeItem("nv_token");
             setToken(null);
             setUser(null);
             setActivePath("landing");
@@ -173,21 +178,46 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     };
     startDB();
 
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key?.startsWith('nv_')) {
-        setDbActionCount(prev => prev + 1);
-      }
-    };
     const handleCustomDbUpdate = () => {
       setDbActionCount(prev => prev + 1);
+      setSystemSettings(db.settings.get());
+      const activeToken = sessionStorage.getItem("nv_token");
+      if (activeToken) {
+        const latestUser = db.users.getById(activeToken);
+        if (latestUser) {
+          setUser(prev => {
+            if (!prev) return latestUser;
+            if (JSON.stringify(prev) === JSON.stringify(latestUser)) return prev;
+            return latestUser;
+          });
+        }
+      }
+    };
+    const handleWindowFocus = () => {
+      refreshDB().catch(() => undefined);
     };
 
-    window.addEventListener('storage', handleStorageChange);
+    let realtimeDebounce: ReturnType<typeof setTimeout> | null = null;
+    const unsubscribeRealtime = subscribeToSupabaseRealtime(() => {
+      if (realtimeDebounce) clearTimeout(realtimeDebounce);
+      realtimeDebounce = setTimeout(() => {
+        refreshDB().catch(() => undefined);
+      }, 400);
+    });
+
+    const sqlSyncInterval = setInterval(() => {
+      refreshDB().catch(() => undefined);
+    }, 15000);
+
+    window.addEventListener('focus', handleWindowFocus);
     window.addEventListener('nightverse_tags_updated', handleCustomDbUpdate);
     window.addEventListener('nightverse_db_updated', handleCustomDbUpdate);
 
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
+      if (realtimeDebounce) clearTimeout(realtimeDebounce);
+      unsubscribeRealtime();
+      clearInterval(sqlSyncInterval);
+      window.removeEventListener('focus', handleWindowFocus);
       window.removeEventListener('nightverse_tags_updated', handleCustomDbUpdate);
       window.removeEventListener('nightverse_db_updated', handleCustomDbUpdate);
     };
@@ -210,8 +240,11 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     } else {
       html.classList.add("dark");
     }
+    if (user) {
+      db.users.update(user.id, { profile: { ...user.profile, themePref: newTheme } });
+    }
     try {
-      localStorage.setItem("nv_theme", newTheme);
+      sessionStorage.setItem("nv_theme", newTheme);
     } catch(err) {
       console.warn(err);
     }
@@ -221,7 +254,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   useEffect(() => {
     if (!dbLoaded) return;
     const checkAuth = () => {
-      const storedToken = localStorage.getItem("nv_token");
+      const storedToken = sessionStorage.getItem("nv_token");
       if (!storedToken) {
         setToken(null);
         setUser(null);
@@ -315,9 +348,10 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, [token, user, dbActionCount]);
 
   useEffect(() => {
-    // Restore theme
-    const savedTheme = localStorage.getItem("nv_theme") as "dark" | "light";
-    if (savedTheme) {
+    // Restore theme from SQL user profile or active tab session
+    const profileTheme = user?.profile?.themePref as "dark" | "light" | undefined;
+    const savedTheme = (profileTheme || sessionStorage.getItem("nv_theme")) as "dark" | "light" | null;
+    if (savedTheme === "dark" || savedTheme === "light") {
       setTheme(savedTheme);
       const html = document.documentElement;
       if (savedTheme === "light") {
@@ -326,9 +360,13 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         html.classList.add("dark");
       }
     }
-  }, []);
+  }, [user?.profile?.themePref]);
 
   const triggerToast = (title: string, message: string, type: "success" | "error" | "info" = "info") => {
+    const latestSettings = db.settings.get();
+    if (systemSettings?.enableFloatingToasts === false || latestSettings?.enableFloatingToasts === false) {
+      return;
+    }
     const id = Date.now().toString();
     // Only one notification at a time: replace previous ones
     setToastAlerts([{ id, title, message, type }]);
@@ -343,9 +381,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   const login = (userData: any, sessionToken: string) => {
     try {
-      localStorage.setItem("nv_token", sessionToken);
+      sessionStorage.setItem("nv_token", sessionToken);
     } catch(err) {
-      console.warn("Quota Exceeded", err);
+      console.warn("Session storage error", err);
     }
     setToken(sessionToken);
     setUser(userData);
@@ -354,37 +392,44 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   };
 
   const logout = () => {
-    localStorage.removeItem("nv_token");
+    sessionStorage.removeItem("nv_token");
     setToken(null);
     setUser(null);
     setActivePath("landing");
     triggerToast("Logged Out Successfully", "Your session was securely cleared.", "info");
   };
 
-  const updateLocalProfile = (updatedProfile: any) => {
-    if (user) {
-      setUser({
-        ...user,
+  const updateLocalProfile = (updatedProfile: any, updatedUsername?: string) => {
+    setUser(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        ...(updatedUsername ? { username: updatedUsername } : {}),
         profile: updatedProfile,
-      });
-    }
+      };
+    });
   };
 
   const setActiveBadge = async (badgeId: string | null) => {
     if (!user) return;
     try {
       const updatedProfile = {
-        ...user.profile,
+        ...(user.profile || {}),
         activeBadge: badgeId || undefined
       };
-      
+
       db.users.update(user.id, { profile: updatedProfile });
       updateLocalProfile(updatedProfile);
+      const syncRes = await db.syncNow([STORAGE_KEYS.USERS]);
+      if (!syncRes.ok) {
+        triggerToast("Gagal Menyimpan Badge", syncRes.error || "Perubahan badge gagal disinkronkan ke database.", "error");
+        return;
+      }
       triggerDBSync();
-      triggerToast("Badge Updated", badgeId ? `"${badgeId}" is now your active badge.` : "Active badge cleared.", "success");
-    } catch (error) {
+      triggerToast("Badge Diperbarui ✨", badgeId ? `Badge "${badgeId}" sekarang aktif di profil Anda.` : "Badge aktif dilepas.", "success");
+    } catch (error: any) {
       console.error("Set active badge error:", error);
-      triggerToast("Update Failed", "Could not save your badge preference.", "error");
+      triggerToast("Update Failed", error?.message || "Could not save your badge preference.", "error");
     }
   };
 
@@ -544,6 +589,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     db.settings.save(settings);
     const updated = db.settings.get();
     setSystemSettings(updated);
+    if (updated.enableFloatingToasts === false) {
+      setToastAlerts([]);
+    }
 
     // Synchronize to backend Express server if reachable
     try {

@@ -26,6 +26,8 @@ import {
 } from "lucide-react";
 import { useAppState } from "../context/AppState.js";
 import { db } from "../lib/db.js";
+import { STORAGE_KEYS } from "../lib/supabaseSync.js";
+import { compressImageFile } from "../lib/imageUtils.js";
 import { motion } from "motion/react";
 import { RoleBadge } from "./RoleBadge.js";
 
@@ -33,9 +35,7 @@ type ThemePref = "dark-cosmic" | "light-neon" | "cyberpunk" | "monochrome-slate"
 type LangPref = "en" | "id" | "jp" | "fr" | "es" | "kr";
 
 export const ProfileWorkspace: React.FC<{ onCancel?: () => void }> = ({ onCancel }) => {
-  const { user, triggerToast, updateLocalProfile, navigateTo, createNotification } = useAppState();
-
-  if (!user) return null;
+  const { user, triggerToast, updateLocalProfile, navigateTo, createNotification, triggerDBSync } = useAppState();
 
   // Form Fields State
   const [fullName, setFullName] = useState("");
@@ -101,10 +101,9 @@ export const ProfileWorkspace: React.FC<{ onCancel?: () => void }> = ({ onCancel
 
   // Load and set state properties
   useEffect(() => {
-    if (user.profile) {
+    if (user?.profile) {
       setFullName(user.profile.fullName || "");
-      // ... (other fields)
-      
+
       if (user.profile.notificationPreferences) {
         setNotificationPreferences(user.profile.notificationPreferences);
       }
@@ -115,7 +114,7 @@ export const ProfileWorkspace: React.FC<{ onCancel?: () => void }> = ({ onCancel
       setBannerUrl(user.profile.bannerUrl || "");
       setInstagram(user.profile.instagram || "");
       setTwitter(user.profile.twitter || "");
-      setGithub(user.profile.github || ""); // Note: Overview currently uses linkedin as proxy for github
+      setGithub(user.profile.github || "");
       setLinkedin(user.profile.linkedin || "");
       setTiktok(user.profile.tiktok || "");
       setFacebook(user.profile.facebook || "");
@@ -124,45 +123,44 @@ export const ProfileWorkspace: React.FC<{ onCancel?: () => void }> = ({ onCancel
       setOccupation(user.profile.occupation || "Independent Creator");
       setInterests(user.profile.interests || []);
       setBadges(user.profile.badges || []);
-      
-      if (user.profile.notificationPreferences) {
-        setNotificationPreferences(user.profile.notificationPreferences);
-      }
-      
+
       if (user.profile.privacy) {
         setPrivacy(user.profile.privacy);
       }
-      
+
       if (user.profile.dateOfBirth) {
         setDateOfBirth(user.profile.dateOfBirth.slice(0, 10));
       }
 
-      // Restore custom saved preferences from localStorage or profile
-      const savedTheme = localStorage.getItem(`nv_pref_theme_${user.id}`);
-      if (savedTheme) setThemePref(savedTheme as ThemePref);
-
-      const savedLang = localStorage.getItem(`nv_pref_lang_${user.id}`);
-      if (savedLang) setLangPref(savedLang as LangPref);
+      // Restore custom saved preferences from SQL user profile
+      if (user.profile.themePref) setThemePref(user.profile.themePref as ThemePref);
+      if (user.profile.langPref) setLangPref(user.profile.langPref as LangPref);
       setHasLoaded(true);
     }
   }, [user]);
 
-  // Handle local Avatar selection
-  const handleAvatarSelection = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle local Avatar selection (compressed for SQL JSONB persistence)
+  const handleAvatarSelection = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => setAvatarUrl(reader.result as string);
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImageFile(file, { maxWidth: 512, maxHeight: 512, quality: 0.82 });
+      setAvatarUrl(compressed);
+    } catch (err: any) {
+      triggerToast("Upload Gagal", err?.message || "Gagal memproses foto avatar.", "error");
+    }
   };
 
-  // Handle local Cover Banner selection
-  const handleBannerSelection = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle local Cover Banner selection (compressed for SQL JSONB persistence)
+  const handleBannerSelection = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => setBannerUrl(reader.result as string);
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImageFile(file, { maxWidth: 1400, maxHeight: 600, quality: 0.8 });
+      setBannerUrl(compressed);
+    } catch (err: any) {
+      triggerToast("Upload Gagal", err?.message || "Gagal memproses gambar banner.", "error");
+    }
   };
 
   const removeAvatar = () => setAvatarUrl("");
@@ -194,80 +192,91 @@ export const ProfileWorkspace: React.FC<{ onCancel?: () => void }> = ({ onCancel
 
   const progressPercent = calculateProgress();
 
-  // Auto-save privacy changes
+  // Auto-save privacy changes cleanly without update loops
   useEffect(() => {
-    if (user && hasLoaded) {
-      const currentPrivacy = JSON.stringify(user.profile?.privacy);
-      const newPrivacy = JSON.stringify(privacy);
-      
-      if (currentPrivacy !== newPrivacy && !isCommiting) {
-        db.users.update(user.id, { 
-          profile: { 
-            ...user.profile, 
-            privacy 
-          } 
-        });
-        updateLocalProfile({ 
-          ...user.profile, 
-          privacy 
-        });
-        // We don't trigger a toast for every toggle to avoid spam, 
-        // but we ensure it's saved.
-      }
-    }
-  }, [privacy, user, updateLocalProfile]);
+    if (!user || !hasLoaded || isCommiting) return;
+    const currentPrivacy = JSON.stringify(user.profile?.privacy);
+    const newPrivacy = JSON.stringify(privacy);
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+    if (currentPrivacy !== newPrivacy) {
+      const updatedProfile = {
+        ...(user.profile || {}),
+        privacy
+      };
+      db.users.update(user.id, { profile: updatedProfile });
+      updateLocalProfile(updatedProfile);
+      db.syncNow([STORAGE_KEYS.USERS]).catch(() => undefined);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [privacy, hasLoaded]);
+
+  if (!user) return null;
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsCommiting(true);
 
     const profileData = {
-      fullName,
-      bio,
-      location,
-      website,
-      avatarUrl,
-      bannerUrl,
-      instagram,
-      twitter,
-      github,
-      linkedin,
-      tiktok,
-      facebook,
-      phoneNumber,
+      ...(user.profile || {}),
+      fullName: fullName.trim(),
+      bio: bio.trim(),
+      location: location.trim(),
+      website: website.trim(),
+      avatarUrl: avatarUrl.trim(),
+      bannerUrl: bannerUrl.trim(),
+      instagram: instagram.trim(),
+      twitter: twitter.trim(),
+      github: github.trim(),
+      linkedin: linkedin.trim(),
+      tiktok: tiktok.trim(),
+      facebook: facebook.trim(),
+      phoneNumber: phoneNumber.trim(),
       gender,
-      occupation,
+      occupation: occupation.trim(),
       dateOfBirth,
       interests,
-      badges,
+      badges: user.profile?.badges || badges,
+      activeBadge: user.profile?.activeBadge,
       privacy,
-      notificationPreferences
+      notificationPreferences,
+      themePref,
+      langPref
     };
 
-    db.users.update(user.id, { profile: profileData });
     try {
-      localStorage.setItem(`nv_pref_theme_${user.id}`, themePref);
-      localStorage.setItem(`nv_pref_lang_${user.id}`, langPref);
-    } catch(err) {
-      console.warn("Storage quota limit reached", err);
-    }
-    updateLocalProfile(profileData);
-    
-    createNotification({
-      userId: user.id,
-      triggeredById: user.id,
-      triggeredByAvatar: avatarUrl || user.profile?.avatarUrl,
-      title: "Profile Updated",
-      message: "Your profile information has been successfully updated.",
-      category: "SYSTEM",
-      type: "PROFILE_UPDATE",
-      link: `PROFILE:${user.id}`
-    });
-    
-    setTimeout(() => {
-      triggerToast("Profile Blueprint Saved", "All parameters successfully synchronized with worldview.", "success");
+      db.users.update(user.id, { profile: profileData });
+      const syncRes = await db.syncNow([
+        STORAGE_KEYS.USERS,
+        STORAGE_KEYS.BLOGS,
+        STORAGE_KEYS.PHOTOS,
+        STORAGE_KEYS.VIDEOS
+      ]);
+      if (!syncRes.ok) {
+        triggerToast("Gagal Menyimpan ke Database", syncRes.error || "Perubahan profil gagal disimpan ke Supabase SQL.", "error");
+        setIsCommiting(false);
+        return;
+      }
+
+      updateLocalProfile(profileData);
+      triggerDBSync();
+
+      createNotification({
+        userId: user.id,
+        triggeredById: user.id,
+        triggeredByAvatar: avatarUrl || user.profile?.avatarUrl,
+        title: "Profile Updated",
+        message: "Your profile information has been successfully updated.",
+        category: "SYSTEM",
+        type: "PROFILE_UPDATE",
+        link: `PROFILE:${user.id}`
+      });
+
+      triggerToast("Profile Blueprint Saved", "Semua parameter profil tersimpan real-time ke database.", "success");
+    } catch (err: any) {
+      triggerToast("Gagal Menyimpan", err?.message || "Terjadi kesalahan saat menyimpan profil.", "error");
+    } finally {
       setIsCommiting(false);
-    }, 800);
+    }
   };
 
   // Privacy level helper

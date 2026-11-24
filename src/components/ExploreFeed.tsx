@@ -33,7 +33,7 @@ import {
 import { useAppState } from "../context/AppState.js";
 import { motion, AnimatePresence } from "motion/react";
 import { DeleteConfirmationModal } from "./DeleteConfirmationModal.js";
-import { db } from "../lib/db.js";
+import { db, refreshDB } from "../lib/db.js";
 import { RoleBadge } from "./RoleBadge.js";
 
 type SortOption = "VIEWS" | "LIKES" | "COMMENTS" | "NEWEST" | "OLDEST" | "UPDATED";
@@ -230,7 +230,7 @@ const ExploreCard: React.FC<ExploreCardProps> = ({ item, onSelect, onAdminDelete
             }}
             className="text-[10px] md:text-xs text-slate-450 hover:text-purple-450 transition-colors truncate font-sans cursor-pointer"
           >
-            @{item.authorName}
+            {db.users.getById(item.userId)?.profile?.fullName?.trim() || item.authorName}
           </p>
         </div>
 
@@ -394,9 +394,11 @@ export const ExploreFeed: React.FC = () => {
     }
   }, [tagSearchQuery]);
 
-  const triggerFeedRefresh = () => {
+  const triggerFeedRefresh = async () => {
+    setIsSyncing(true);
+    await refreshDB();
     loadExplorePayload();
-    triggerToast("Feed Synchronized", "Pulled dynamic assets catalog from metadata logs", "success");
+    triggerToast("Feed Synchronized", "Pulled live content catalog from SQL database", "success");
   };
 
   // Compile publication items

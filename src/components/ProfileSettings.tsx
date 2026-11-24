@@ -61,6 +61,9 @@ import {
 } from "lucide-react";
 import { useAppState } from "../context/AppState.js";
 import { db } from "../lib/db.js";
+import { STORAGE_KEYS } from "../lib/supabaseSync.js";
+import { compressImageFile } from "../lib/imageUtils.js";
+import { getBadgeIconComponent } from "../lib/badgeIcons.js";
 import { motion, AnimatePresence } from "motion/react";
 import { RoleBadge, BadgeType } from "./RoleBadge.js";
 import { 
@@ -443,15 +446,38 @@ export const ProfileSettings: React.FC = () => {
                   }
                   stagedProfileData={stagedProfileData}
                   isOwnerPreview={true}
-                  onApplyDraft={() => {
+                  onApplyDraft={async () => {
                     if (!stagedProfileData) return;
+                    const draftUsername = (stagedProfileData.username || user.username).trim();
+                    if (!draftUsername || draftUsername.length < 3 || /\s/.test(draftUsername)) {
+                      triggerToast("Validasi Gagal", "Username harus minimal 3 karakter tanpa spasi.", "error");
+                      return;
+                    }
+                    const duplicate = db.users.getAll().find(
+                      (u) => u.id !== user.id && u.username.toLowerCase() === draftUsername.toLowerCase()
+                    );
+                    if (duplicate) {
+                      triggerToast("Username Sudah Dipakai", `Username @${draftUsername} sudah digunakan oleh akun lain.`, "error");
+                      return;
+                    }
+                    const { username: _discard, ...cleanProfile } = stagedProfileData;
                     db.users.update(user.id, {
-                      username: stagedProfileData.username || user.username,
-                      profile: stagedProfileData
+                      username: draftUsername,
+                      profile: cleanProfile
                     });
-                    updateLocalProfile(stagedProfileData);
+                    const syncRes = await db.syncNow([
+                      STORAGE_KEYS.USERS,
+                      STORAGE_KEYS.BLOGS,
+                      STORAGE_KEYS.PHOTOS,
+                      STORAGE_KEYS.VIDEOS
+                    ]);
+                    if (!syncRes.ok) {
+                      triggerToast("Gagal Menyimpan ke Database", syncRes.error || "Perubahan profil gagal disinkronkan ke Supabase.", "error");
+                      return;
+                    }
+                    updateLocalProfile(cleanProfile, draftUsername);
                     triggerDBSync();
-                    triggerToast("Profil Berhasil Disimpan! 🎉", "Perubahan profil telah diterapkan ke akun publik Anda.", "success");
+                    triggerToast("Profil Berhasil Disimpan! 🎉", "Perubahan profil telah diterapkan ke database secara real-time.", "success");
                     setStagedProfileData(null);
                     setSelectedMenu(null);
                   }}
@@ -541,28 +567,26 @@ interface EditProfilePanelProps {
 const EditProfilePanel: React.FC<EditProfilePanelProps> = ({ onBack, onPreviewDraft }) => {
   const { user, updateLocalProfile, triggerToast, createNotification, triggerDBSync } = useAppState();
 
-  if (!user) return null;
-
   // Active section tabs
   const [activeSection, setActiveSection] = useState<
     "basic" | "appearance" | "interests" | "social" | "identity" | "privacy"
   >("basic");
 
   // Basic Information
-  const [username, setUsername] = useState(user.username || "");
-  const [fullName, setFullName] = useState(user.profile?.fullName || "");
-  const [bio, setBio] = useState(user.profile?.bio || "");
-  const [gender, setGender] = useState(user.profile?.gender || "Tidak ditentukan");
-  const [location, setLocation] = useState(user.profile?.location || "");
-  const [occupation, setOccupation] = useState(user.profile?.occupation || "");
-  const [website, setWebsite] = useState(user.profile?.website || "");
+  const [username, setUsername] = useState(user?.username || "");
+  const [fullName, setFullName] = useState(user?.profile?.fullName || "");
+  const [bio, setBio] = useState(user?.profile?.bio || "");
+  const [gender, setGender] = useState(user?.profile?.gender || "Tidak ditentukan");
+  const [location, setLocation] = useState(user?.profile?.location || "");
+  const [occupation, setOccupation] = useState(user?.profile?.occupation || "");
+  const [website, setWebsite] = useState(user?.profile?.website || "");
 
   // Appearance
-  const [avatarUrl, setAvatarUrl] = useState(user.profile?.avatarUrl || "");
-  const [bannerUrl, setBannerUrl] = useState(user.profile?.bannerUrl || "");
+  const [avatarUrl, setAvatarUrl] = useState(user?.profile?.avatarUrl || "");
+  const [bannerUrl, setBannerUrl] = useState(user?.profile?.bannerUrl || "");
 
   // Interests
-  const [interests, setInterests] = useState<string[]>(user.profile?.interests || [
+  const [interests, setInterests] = useState<string[]>(user?.profile?.interests || [
     "Cyberpunk Art",
     "Neon Lighting",
     "3D Rendering"
@@ -570,47 +594,49 @@ const EditProfilePanel: React.FC<EditProfilePanelProps> = ({ onBack, onPreviewDr
   const [customTagInput, setCustomTagInput] = useState("");
 
   // Social Links
-  const [twitter, setTwitter] = useState(user.profile?.twitter || "");
-  const [instagram, setInstagram] = useState(user.profile?.instagram || "");
-  const [github, setGithub] = useState(user.profile?.github || "");
-  const [linkedin, setLinkedin] = useState(user.profile?.linkedin || "");
-  const [tiktok, setTiktok] = useState(user.profile?.tiktok || "");
-  const [youtube, setYoutube] = useState(user.profile?.youtube || "");
-  const [discord, setDiscord] = useState(user.profile?.discord || "");
+  const [twitter, setTwitter] = useState(user?.profile?.twitter || "");
+  const [instagram, setInstagram] = useState(user?.profile?.instagram || "");
+  const [github, setGithub] = useState(user?.profile?.github || "");
+  const [linkedin, setLinkedin] = useState(user?.profile?.linkedin || "");
+  const [tiktok, setTiktok] = useState(user?.profile?.tiktok || "");
+  const [youtube, setYoutube] = useState(user?.profile?.youtube || "");
+  const [discord, setDiscord] = useState(user?.profile?.discord || "");
 
   // Identity Details
-  const [phoneNumber, setPhoneNumber] = useState(user.profile?.phoneNumber || "");
+  const [phoneNumber, setPhoneNumber] = useState(user?.profile?.phoneNumber || "");
 
   // Privacy & Visibility Settings (8 independent controls)
   const [profileVisible, setProfileVisible] = useState<boolean>(
-    user.profile?.privacy?.profileVisible !== false
+    user?.profile?.privacy?.profileVisible !== false
   );
   const [showAvatar, setShowAvatar] = useState<PrivacyLevel>(
-    user.profile?.privacy?.showAvatar || "PUBLIC"
+    user?.profile?.privacy?.showAvatar || "PUBLIC"
   );
   const [showBanner, setShowBanner] = useState<PrivacyLevel>(
-    user.profile?.privacy?.showBanner || "PUBLIC"
+    user?.profile?.privacy?.showBanner || "PUBLIC"
   );
   const [showInterests, setShowInterests] = useState<PrivacyLevel>(
-    user.profile?.privacy?.showInterests || "PUBLIC"
+    user?.profile?.privacy?.showInterests || "PUBLIC"
   );
   const [showSocialLinks, setShowSocialLinks] = useState<PrivacyLevel>(
-    user.profile?.privacy?.showSocialLinks || "PUBLIC"
+    user?.profile?.privacy?.showSocialLinks || "PUBLIC"
   );
   const [showPhone, setShowPhone] = useState<PrivacyLevel>(
-    user.profile?.privacy?.showPhone || "PRIVATE" // default phone is Private
+    user?.profile?.privacy?.showPhone || "PRIVATE"
   );
   const [showIdentity, setShowIdentity] = useState<PrivacyLevel>(
-    user.profile?.privacy?.showIdentity || "PRIVATE" // default identity is Private
+    user?.profile?.privacy?.showIdentity || "PRIVATE"
   );
   const [showActivity, setShowActivity] = useState<PrivacyLevel>(
-    user.profile?.privacy?.showActivity || "PUBLIC"
+    user?.profile?.privacy?.showActivity || "PUBLIC"
   );
   const [showActivityStatus, setShowActivityStatus] = useState<PrivacyLevel>(
-    user.profile?.privacy?.showActivityStatus || "PUBLIC"
+    user?.profile?.privacy?.showActivityStatus || "PUBLIC"
   );
 
   const [isSaving, setIsSaving] = useState(false);
+
+  if (!user) return null;
 
   // Avatar presets
   const avatarPresets = [
@@ -639,20 +665,26 @@ const EditProfilePanel: React.FC<EditProfilePanelProps> = ({ onBack, onPreviewDr
     "Streetwear"
   ];
 
-  const handleAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => setAvatarUrl(reader.result as string);
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImageFile(file, { maxWidth: 512, maxHeight: 512, quality: 0.82 });
+      setAvatarUrl(compressed);
+    } catch (err: any) {
+      triggerToast("Upload Avatar Gagal", err?.message || "Format gambar avatar tidak valid.", "error");
+    }
   };
 
-  const handleBannerFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBannerFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => setBannerUrl(reader.result as string);
-    reader.readAsDataURL(file);
+    try {
+      const compressed = await compressImageFile(file, { maxWidth: 1400, maxHeight: 600, quality: 0.8 });
+      setBannerUrl(compressed);
+    } catch (err: any) {
+      triggerToast("Upload Banner Gagal", err?.message || "Format gambar banner tidak valid.", "error");
+    }
   };
 
   const handleAddTag = (tagToAdd: string) => {
@@ -670,88 +702,116 @@ const EditProfilePanel: React.FC<EditProfilePanelProps> = ({ onBack, onPreviewDr
     setInterests(interests.filter((t) => t !== tagToRemove));
   };
 
-  // Build draft profile snapshot
-  const buildCurrentDraft = () => {
-    return {
-      ...(user.profile || {}),
-      fullName: fullName.trim(),
-      bio: bio.trim(),
-      gender,
-      location: location.trim(),
-      occupation: occupation.trim(),
-      website: website.trim(),
-      avatarUrl: avatarUrl.trim(),
-      bannerUrl: bannerUrl.trim(),
-      interests,
-      twitter: twitter.trim(),
-      instagram: instagram.trim(),
-      github: github.trim(),
-      linkedin: linkedin.trim(),
-      tiktok: tiktok.trim(),
-      youtube: youtube.trim(),
-      discord: discord.trim(),
-      phoneNumber: phoneNumber.trim(),
-      privacy: {
-        ...(user.profile?.privacy || {}),
-        profileVisible,
-        showAvatar,
-        showBanner,
-        showInterests,
-        showSocialLinks,
-        showPhone,
-        showIdentity,
-        showActivity,
-        showActivityStatus,
-        showFullName: showAvatar === "PRIVATE" ? "PRIVATE" : "PUBLIC",
-        showEmail: showIdentity === "PRIVATE" ? "PRIVATE" : "PUBLIC",
-        showLocation: showIdentity === "PRIVATE" ? "PRIVATE" : "PUBLIC",
-        twoFactorEnabled: user.profile?.privacy?.twoFactorEnabled ?? false
-      },
-      username: username.trim()
-    };
-  };
+  // Build clean profile object (without stray username inside JSONB)
+  const buildCleanProfile = () => ({
+    ...(user.profile || {}),
+    fullName: fullName.trim(),
+    bio: bio.trim(),
+    gender,
+    location: location.trim(),
+    occupation: occupation.trim(),
+    website: website.trim(),
+    avatarUrl: avatarUrl.trim(),
+    bannerUrl: bannerUrl.trim(),
+    interests,
+    twitter: twitter.trim(),
+    instagram: instagram.trim(),
+    github: github.trim(),
+    linkedin: linkedin.trim(),
+    tiktok: tiktok.trim(),
+    youtube: youtube.trim(),
+    discord: discord.trim(),
+    phoneNumber: phoneNumber.trim(),
+    privacy: {
+      ...(user.profile?.privacy || {}),
+      profileVisible,
+      showAvatar,
+      showBanner,
+      showInterests,
+      showSocialLinks,
+      showPhone,
+      showIdentity,
+      showActivity,
+      showActivityStatus,
+      showFullName: showAvatar === "PRIVATE" ? "PRIVATE" : "PUBLIC",
+      showEmail: showIdentity === "PRIVATE" ? "PRIVATE" : "PUBLIC",
+      showLocation: showIdentity === "PRIVATE" ? "PRIVATE" : "PUBLIC",
+      twoFactorEnabled: user.profile?.privacy?.twoFactorEnabled ?? false
+    }
+  });
 
   const handlePreview = () => {
-    const draft = buildCurrentDraft();
-    onPreviewDraft(draft);
+    onPreviewDraft({
+      ...buildCleanProfile(),
+      username: username.trim()
+    });
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username.trim()) {
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername) {
       triggerToast("Validasi Gagal", "Username akun tidak boleh kosong.", "error");
+      return;
+    }
+    if (trimmedUsername.length < 3 || /\s/.test(trimmedUsername)) {
+      triggerToast("Validasi Gagal", "Username harus minimal 3 karakter dan tidak boleh mengandung spasi.", "error");
+      return;
+    }
+
+    const duplicateUser = db.users.getAll().find(
+      (u) => u.id !== user.id && u.username.toLowerCase() === trimmedUsername.toLowerCase()
+    );
+    if (duplicateUser) {
+      triggerToast("Username Sudah Digunakan", `Username @${trimmedUsername} sudah dipakai oleh pengguna lain.`, "error");
       return;
     }
 
     setIsSaving(true);
-    const updatedProfile = buildCurrentDraft();
+    const updatedProfile = buildCleanProfile();
 
-    // Persist to Centralized Database
-    db.users.update(user.id, {
-      username: username.trim(),
-      profile: updatedProfile
-    });
+    try {
+      // Persist to Memory Cache + Propagate to Supabase SQL immediately
+      db.users.update(user.id, {
+        username: trimmedUsername,
+        profile: updatedProfile
+      });
 
-    // Update Context State
-    updateLocalProfile(updatedProfile);
-    triggerDBSync();
+      const syncRes = await db.syncNow([
+        STORAGE_KEYS.USERS,
+        STORAGE_KEYS.BLOGS,
+        STORAGE_KEYS.PHOTOS,
+        STORAGE_KEYS.VIDEOS
+      ]);
 
-    createNotification({
-      userId: user.id,
-      triggeredById: user.id,
-      triggeredByAvatar: avatarUrl || user.profile?.avatarUrl,
-      title: "Profile Berhasil Diperbarui ✨",
-      message: "Data profil, tampilan, dan preferensi privasi telah disimpan permanen.",
-      category: "SYSTEM",
-      type: "PROFILE_UPDATE",
-      link: `PROFILE:${user.id}`
-    });
+      if (!syncRes.ok) {
+        triggerToast("Gagal Menyimpan ke Database", syncRes.error || "Perubahan profil gagal dikirim ke Supabase SQL.", "error");
+        setIsSaving(false);
+        return;
+      }
 
-    setTimeout(() => {
-      setIsSaving(false);
-      triggerToast("Profil Berhasil Disimpan! 🎉", "Perubahan profil NightVerse Anda telah aktif.", "success");
+      // Update Context State & Broadcast
+      updateLocalProfile(updatedProfile, trimmedUsername);
+      triggerDBSync();
+
+      createNotification({
+        userId: user.id,
+        triggeredById: user.id,
+        triggeredByAvatar: avatarUrl || user.profile?.avatarUrl,
+        title: "Profile Berhasil Diperbarui ✨",
+        message: "Data profil, tampilan, dan preferensi privasi telah tersimpan permanen di database.",
+        category: "SYSTEM",
+        type: "PROFILE_UPDATE",
+        link: `PROFILE:${user.id}`
+      });
+
+      triggerToast("Profil Berhasil Disimpan! 🎉", "Perubahan profil NightVerse Anda telah tersinkronisasi secara real-time.", "success");
       onBack();
-    }, 500);
+    } catch (err: any) {
+      triggerToast("Gagal Menyimpan", err?.message || "Terjadi kesalahan saat menyimpan profil.", "error");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -1524,8 +1584,9 @@ const BadgesPanel: React.FC = () => {
   // Get earned date from awards log or user creation
   const getEarnedDate = (badge: BadgeDefinition) => {
     const award = userAwards.find(a => 
-      a.badgeId.toLowerCase() === badge.id.toLowerCase() || 
-      a.badgeName.toLowerCase() === badge.name.toLowerCase()
+      a.status !== "REVOKED" &&
+      (a.badgeId.toLowerCase() === badge.id.toLowerCase() || 
+      a.badgeName.toLowerCase() === badge.name.toLowerCase())
     );
     if (award) {
       return new Date(award.grantedAt).toLocaleDateString('id-ID', { year: 'numeric', month: 'short', day: 'numeric' });
@@ -1538,9 +1599,9 @@ const BadgesPanel: React.FC = () => {
 
   const currentActiveBadge = user.profile?.activeBadge || (user.role === "USER" ? "User" : user.role);
 
-  // Group into Unlocked and Locked
+  // Group into Unlocked and Locked (hide INACTIVE badges unless currently earned)
   const earnedList = allBadges.filter(b => checkIsEarned(b));
-  const lockedList = allBadges.filter(b => !checkIsEarned(b));
+  const lockedList = allBadges.filter(b => b.status !== "INACTIVE" && !checkIsEarned(b));
 
   // Search filter
   const matchesSearch = (b: BadgeDefinition) => {
@@ -1640,6 +1701,7 @@ const BadgesPanel: React.FC = () => {
               {filteredEarned.map((badge) => {
                 const isCurrentActive = currentActiveBadge.toLowerCase() === badge.id.toLowerCase() || 
                                        currentActiveBadge.toLowerCase() === badge.name.toLowerCase();
+                const BadgeIcon = getBadgeIconComponent(badge.icon);
 
                 return (
                   <div
@@ -1651,8 +1713,8 @@ const BadgesPanel: React.FC = () => {
                     }`}
                   >
                     <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 rounded-2xl bg-purple-950/40 border border-purple-500/30 flex items-center justify-center text-purple-400 shrink-0 shadow-lg">
-                        <Sparkles className="w-6 h-6" />
+                      <div className={`w-12 h-12 rounded-2xl ${badge.bgColor || "bg-purple-950/40"} border ${badge.borderColor || "border-purple-500/30"} flex items-center justify-center ${badge.color || "text-purple-400"} shrink-0 shadow-lg`}>
+                        <BadgeIcon className="w-6 h-6" />
                       </div>
 
                       <div className="flex-1 min-w-0">
@@ -1679,16 +1741,15 @@ const BadgesPanel: React.FC = () => {
 
                       <button
                         onClick={() => {
-                          setActiveBadge(badge.name);
+                          setActiveBadge(isCurrentActive ? null : badge.name);
                         }}
-                        disabled={isCurrentActive}
                         className={`px-3 py-1.5 rounded-xl font-bold font-space text-xs transition-all cursor-pointer ${
                           isCurrentActive
-                            ? "bg-purple-600/20 text-purple-300 border border-purple-500/40 cursor-default"
+                            ? "bg-purple-600/20 hover:bg-rose-500/20 text-purple-300 hover:text-rose-300 border border-purple-500/40 hover:border-rose-500/40"
                             : "bg-purple-600 hover:bg-purple-500 text-white shadow-md shadow-purple-900/30 active:scale-95"
                         }`}
                       >
-                        {isCurrentActive ? "Active Profile" : "Pakai Badge"}
+                        {isCurrentActive ? "Aktif (Lepas)" : "Pakai Badge"}
                       </button>
                     </div>
                   </div>
@@ -1773,7 +1834,7 @@ interface HelpCenterPanelProps {
 }
 
 const HelpCenterPanel: React.FC<HelpCenterPanelProps> = ({ onOpenDocs, onOpenFaq }) => {
-  const { user, triggerToast } = useAppState();
+  const { user, triggerToast, dbActionCount } = useAppState();
   const [supportCategory, setSupportCategory] = useState<TicketCategory>("Technical Issue");
   const [supportPriority, setSupportPriority] = useState<TicketPriority>("Medium");
   const [supportSubject, setSupportSubject] = useState("");
@@ -1800,7 +1861,7 @@ const HelpCenterPanel: React.FC<HelpCenterPanelProps> = ({ onOpenDocs, onOpenFaq
       list = list.filter(t => t.status === ticketStatusFilter);
     }
     return list;
-  }, [user, ticketSearch, ticketStatusFilter, db.supportTickets.getAll()]);
+  }, [user, ticketSearch, ticketStatusFilter, dbActionCount]);
 
   const troubleShoots = [
     {

@@ -21,7 +21,7 @@ import { motion, AnimatePresence } from "motion/react";
 const AppRouter: React.FC = () => {
   const { 
     activePath: activeView, activeTab, toastAlerts, dismissToast, theme,
-    focusedContent, setFocusedContent, dbLoaded
+    focusedContent, setFocusedContent, dbLoaded, systemSettings
   } = useAppState();
 
   // Route sub-views in dashboard
@@ -142,56 +142,58 @@ const AppRouter: React.FC = () => {
       )}
 
       {/* Minimalist single toast notification system */}
-      <div 
-        id="global-floating-toaster"
-        className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[9999] flex flex-col items-center pointer-events-none w-full px-4"
-      >
-        <AnimatePresence mode="wait">
-          {toastAlerts.map((t) => (
-            <motion.div 
-              key={t.id}
-              initial={{ y: 40, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ opacity: 0, transition: { duration: 0.3 } }}
-              transition={{ 
-                type: "spring",
-                stiffness: 500,
-                damping: 40,
-                duration: 0.3 
-              }}
-              className="pointer-events-auto min-w-[200px] max-w-sm py-2.5 px-4 rounded-2xl bg-slate-900/95 border border-slate-800 text-slate-200 shadow-2xl backdrop-blur-xl flex items-center gap-3 relative overflow-hidden"
-              role="alert"
-              id={`toast-${t.id}`}
-            >
-              <div className="flex-shrink-0">
-                {getToastIcon(t.type)}
-              </div>
-
-              <div className="flex-1 min-w-0 pr-2">
-                <div className="flex items-center gap-2">
-                  <h5 className="font-bold text-[10px] sm:text-xs text-white uppercase font-space tracking-tight truncate">{t.title}</h5>
-                  <div className="w-1 h-1 rounded-full bg-slate-700" />
-                  <p className="text-[10px] sm:text-[11px] text-slate-400 leading-tight truncate">{t.message}</p>
-                </div>
-              </div>
-
-              <button 
-                onClick={() => dismissToast(t.id)}
-                className="p-1 rounded-md text-slate-600 hover:text-white hover:bg-slate-800 transition-colors"
+      {systemSettings?.enableFloatingToasts !== false && (
+        <div 
+          id="global-floating-toaster"
+          className="fixed bottom-8 left-1/2 -translate-x-1/2 z-[9999] flex flex-col items-center pointer-events-none w-full px-4"
+        >
+          <AnimatePresence mode="wait">
+            {toastAlerts.map((t) => (
+              <motion.div 
+                key={t.id}
+                initial={{ y: 40, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ opacity: 0, transition: { duration: 0.3 } }}
+                transition={{ 
+                  type: "spring",
+                  stiffness: 500,
+                  damping: 40,
+                  duration: 0.3 
+                }}
+                className="pointer-events-auto min-w-[200px] max-w-sm py-2.5 px-4 rounded-2xl bg-slate-900/95 border border-slate-800 text-slate-200 shadow-2xl backdrop-blur-xl flex items-center gap-3 relative overflow-hidden"
+                role="alert"
+                id={`toast-${t.id}`}
               >
-                <X className="w-3 h-3" />
-              </button>
-              
-              {/* Subtle dynamic accent */}
-              <div className={`absolute left-0 top-0 bottom-0 w-1 ${
-                t.type === 'success' ? 'bg-emerald-500' : 
-                t.type === 'error' ? 'bg-rose-500' : 
-                'bg-purple-500'
-              }`} />
-            </motion.div>
-          ))}
-        </AnimatePresence>
-      </div>
+                <div className="flex-shrink-0">
+                  {getToastIcon(t.type)}
+                </div>
+
+                <div className="flex-1 min-w-0 pr-2">
+                  <div className="flex items-center gap-2">
+                    <h5 className="font-bold text-[10px] sm:text-xs text-white uppercase font-space tracking-tight truncate">{t.title}</h5>
+                    <div className="w-1 h-1 rounded-full bg-slate-700" />
+                    <p className="text-[10px] sm:text-[11px] text-slate-400 leading-tight truncate">{t.message}</p>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => dismissToast(t.id)}
+                  className="p-1 rounded-md text-slate-600 hover:text-white hover:bg-slate-800 transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+                
+                {/* Subtle dynamic accent */}
+                <div className={`absolute left-0 top-0 bottom-0 w-1 ${
+                  t.type === 'success' ? 'bg-emerald-500' : 
+                  t.type === 'error' ? 'bg-rose-500' : 
+                  'bg-purple-500'
+                }`} />
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        </div>
+      )}
 
     </div>
   );
@@ -230,7 +232,6 @@ class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundarySta
 
   handleReset = () => {
     try {
-      localStorage.clear();
       sessionStorage.clear();
     } catch {}
     window.location.reload();

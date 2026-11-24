@@ -12,6 +12,8 @@ import {
   hydrateAllFromSupabase,
   pushInitialSnapshotToSupabase,
   scheduleSupabaseSync,
+  flushSupabaseSync,
+  isKeyPendingSync,
 } from "./supabaseSync.js";
 
 // Keys for Storage
@@ -22,93 +24,18 @@ const CACHE: Record<string, any> = {};
 let dbInitialized = false;
 let suppressRemoteSync = false;
 
-// Simple IDB wrapper for large data sets
-const IDB_NAME = "NightVerseDB";
-const IDB_VERSION = 1;
-const STORE_NAME = "kv";
-
-const getDB = (): Promise<IDBDatabase> => {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(IDB_NAME, IDB_VERSION);
-    request.onupgradeneeded = () => {
-      if (!request.result.objectStoreNames.contains(STORE_NAME)) {
-        request.result.createObjectStore(STORE_NAME);
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
-  });
-};
-
-const idb = {
-  get: async <T>(key: string): Promise<T | null> => {
-    try {
-      const db = await getDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction(STORE_NAME, "readonly");
-        const request = transaction.objectStore(STORE_NAME).get(key);
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error);
-      });
-    } catch (err) {
-      console.error("IDB Get Error:", err);
-      return null;
-    }
-  },
-  set: async <T>(key: string, value: T): Promise<void> => {
-    try {
-      const db = await getDB();
-      return new Promise((resolve, reject) => {
-        const transaction = db.transaction(STORE_NAME, "readwrite");
-        const request = transaction.objectStore(STORE_NAME).put(value, key);
-        request.onsuccess = () => resolve();
-        request.onerror = () => reject(request.error);
-      });
-    } catch (err) {
-      console.error("IDB Set Error:", err);
-    }
-  }
-};
-
-// Generic helper to get data (sync from cache, defaults to localStorage if not in cache)
+// Generic helper to get data strictly from SQL-hydrated in-memory cache
 const get = <T>(key: string, defaultValue: T): T => {
   if (CACHE[key] !== undefined) return CACHE[key];
-  
-  const stored = localStorage.getItem(key);
-  if (!stored) return defaultValue;
-  try {
-    const parsed = JSON.parse(stored);
-    CACHE[key] = parsed;
-    return parsed;
-  } catch {
-    return defaultValue;
-  }
+  return defaultValue;
 };
 
-// Generic helper to save data (sync to cache + localStorage fallback, async to IDB)
+// Generic helper to save data strictly to in-memory cache and sync to Supabase SQL database
 const set = <T>(key: string, data: T): void => {
-  // 1. Update Memory Cache (Instant availability)
+  // 1. Update Memory Cache (Instant synchronous UI availability)
   CACHE[key] = data;
 
-  // 2. Async Save to IndexedDB (Handles the 10GB capacity)
-  idb.set(key, data);
-
-  // 3. Fallback Save to LocalStorage (Only for small items to avoid quota errors)
-  const isSmallItem = key === KEYS.SYSTEM_SETTINGS || key === KEYS.TAGS || key === KEYS.BADGES || key === KEYS.BADGE_AWARDS;
-  if (isSmallItem) {
-    try {
-      localStorage.setItem(key, JSON.stringify(data));
-    } catch (err) {
-      // LocalStorage might still fail, but IDB is our main source now
-      console.warn("LocalStorage fallback failed for", key, err);
-    }
-  } else {
-    // Large items like photos/videos/blogs are now IDB-exclusive
-    // We clear them from localStorage to free up space
-    localStorage.removeItem(key);
-  }
-
-  // 4. Async Diff Sync to Supabase REST API
+  // 2. Async Diff Sync to Supabase SQL Database via PostgREST (/rest/v1/)
   if (!suppressRemoteSync) {
     scheduleSupabaseSync(key, data);
   }
@@ -138,6 +65,7 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   enableEmailVerification: true,
   enablePushNotifications: false,
   enableRealtimeStream: true,
+  enableFloatingToasts: true,
   creatorMasterpiecesBlur: false,
   exploreItemsPerPage: 12,
   mediaApproval: {
@@ -160,7 +88,9 @@ const DEFAULT_USERS: User[] = [
     profile: {
       fullName: "System Overseer",
       bio: "Root administrator for the NightVerse ecosystem.",
-      avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=admin"
+      avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=admin",
+      activeBadge: "Super Admin",
+      badges: ["Super Admin", "Administrator"]
     }
   },
   {
@@ -175,7 +105,9 @@ const DEFAULT_USERS: User[] = [
     profile: {
       fullName: "Executive Admin",
       bio: "Executive administrator of NightVerse.",
-      avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=exec"
+      avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=exec",
+      activeBadge: "Administrator",
+      badges: ["Administrator"]
     }
   },
   {
@@ -190,7 +122,9 @@ const DEFAULT_USERS: User[] = [
     profile: {
       fullName: "Moderations Lead",
       bio: "Content moderation lead.",
-      avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=mod"
+      avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=mod",
+      activeBadge: "Moderator",
+      badges: ["Moderator"]
     }
   },
   {
@@ -205,7 +139,9 @@ const DEFAULT_USERS: User[] = [
     profile: {
       fullName: "Visual Photographer",
       bio: "Capturing the dark cyber landscapes.",
-      avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=neon_shadow"
+      avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=neon_shadow",
+      activeBadge: "Verified Creator",
+      badges: ["Verified Creator", "Contributor"]
     }
   },
   {
@@ -220,7 +156,9 @@ const DEFAULT_USERS: User[] = [
     profile: {
       fullName: "Cyber Illustrator",
       bio: "Painting dreams in bright pixels.",
-      avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=pixel_dreamer"
+      avatarUrl: "https://api.dicebear.com/7.x/avataaars/svg?seed=pixel_dreamer",
+      activeBadge: "Contributor",
+      badges: ["Contributor"]
     }
   }
 ];
@@ -379,20 +317,11 @@ export const DEFAULT_FEATURED_VIDEOS: Video[] = [
   }
 ];
 
-// Initialize Database (Async loading from IDB + Supabase Hydration)
+// Initialize Database strictly from Supabase SQL (no localStorage/IndexedDB persistence)
 export const initDB = async (): Promise<void> => {
   if (dbInitialized) return;
 
-  // 1. Load local baseline from IndexedDB into Cache
-  const allKeys = Object.values(KEYS);
-  await Promise.all(allKeys.map(async (key) => {
-    const val = await idb.get(key);
-    if (val !== null && val !== undefined) {
-      CACHE[key] = val;
-    }
-  }));
-
-  // 2. Hydrate live state from Supabase REST API (authoritative when schema is ready)
+  // 1. Hydrate live state directly from Supabase SQL database
   const remoteReport = await hydrateAllFromSupabase();
   if (remoteReport.connected && remoteReport.remoteHasCoreSeed) {
     suppressRemoteSync = true;
@@ -401,7 +330,6 @@ export const initDB = async (): Promise<void> => {
         const remoteVal = remoteReport.dataByKey[key];
         if (remoteVal !== undefined) {
           CACHE[key] = remoteVal;
-          await idb.set(key, remoteVal);
         }
       }
     } finally {
@@ -409,7 +337,7 @@ export const initDB = async (): Promise<void> => {
     }
   }
 
-  // 3. Initial Seed / Upgrade Check if needed
+  // 2. Initial Seed / Upgrade Check in memory (synced to Supabase SQL)
   const existingUsers = get<User[]>(KEYS.USERS, []);
   if (!existingUsers || existingUsers.length === 0) {
     set(KEYS.USERS, DEFAULT_USERS);
@@ -439,7 +367,6 @@ export const initDB = async (): Promise<void> => {
     }
   }
   if (!get(KEYS.SYSTEM_SETTINGS, null)) set(KEYS.SYSTEM_SETTINGS, DEFAULT_SYSTEM_SETTINGS);
-  if (!get(KEYS.PROFILES, null)) set(KEYS.PROFILES, []);
   if (!get(KEYS.BLOGS, null)) set(KEYS.BLOGS, []);
   const currentVideos = get<Video[]>(KEYS.VIDEOS, null);
   if (!currentVideos || currentVideos.length === 0) {
@@ -616,7 +543,7 @@ export const initDB = async (): Promise<void> => {
     if (catsModified) set(KEYS.DOC_CATEGORIES, currentCats);
   }
 
-  // 4. Push any seeded or upgraded defaults back to Supabase if connected
+  // 3. Push any seeded or upgraded defaults back to Supabase SQL if connected
   if (remoteReport.connected) {
     pushInitialSnapshotToSupabase(CACHE).catch((err) => {
       console.warn("[NightVerse Supabase] Background seed sync warning:", err);
@@ -626,8 +553,35 @@ export const initDB = async (): Promise<void> => {
   dbInitialized = true;
 };
 
+// Pull live latest state from Supabase SQL into memory cache
+export const refreshDB = async (): Promise<boolean> => {
+  const remoteReport = await hydrateAllFromSupabase();
+  if (!remoteReport.connected || !remoteReport.remoteHasCoreSeed) {
+    return false;
+  }
+  suppressRemoteSync = true;
+  try {
+    for (const key of remoteReport.loadedKeys) {
+      if (isKeyPendingSync(key)) continue;
+      const remoteVal = remoteReport.dataByKey[key];
+      if (remoteVal !== undefined) {
+        CACHE[key] = remoteVal;
+      }
+    }
+  } finally {
+    suppressRemoteSync = false;
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { source: "supabase" } }));
+  }
+  return true;
+};
+
 // Database API
 export const db = {
+  syncNow: async (keys?: string[]): Promise<{ ok: boolean; error?: string }> => {
+    return flushSupabaseSync(keys, CACHE);
+  },
   // Helpers
   enrich: {
     blog: (b: Blog) => {
@@ -682,7 +636,61 @@ export const db = {
     },
     update: (id: string, updates: Partial<User>) => {
       const users = get<User[]>(KEYS.USERS, []);
-      set(KEYS.USERS, users.map(u => u.id === id ? { ...u, ...updates } : u));
+      const existingUser = users.find(u => u.id === id);
+      const nowIso = new Date().toISOString();
+
+      const updatedUsers = users.map(u => {
+        if (u.id !== id) return u;
+        const mergedProfile = updates.profile
+          ? { ...(u.profile || {}), ...updates.profile }
+          : u.profile;
+        return {
+          ...u,
+          ...updates,
+          profile: mergedProfile,
+          updatedAt: nowIso
+        };
+      });
+      set(KEYS.USERS, updatedUsers);
+
+      // Propagate author name / avatar updates to creator's works so feeds stay consistent
+      if (existingUser) {
+        const nextUsername = updates.username?.trim() || existingUser.username;
+        const nextAvatar = updates.profile?.avatarUrl !== undefined
+          ? updates.profile.avatarUrl
+          : existingUser.profile?.avatarUrl;
+        const nameChanged = nextUsername !== existingUser.username;
+        const avatarChanged = nextAvatar !== existingUser.profile?.avatarUrl;
+
+        if (nameChanged || avatarChanged) {
+          const blogs = get<Blog[]>(KEYS.BLOGS, []);
+          if (blogs.some(b => b.userId === id)) {
+            set(KEYS.BLOGS, blogs.map(b => b.userId === id ? {
+              ...b,
+              authorName: nextUsername,
+              authorAvatar: nextAvatar || b.authorAvatar
+            } : b));
+          }
+
+          const photos = get<Photo[]>(KEYS.PHOTOS, []);
+          if (photos.some(p => p.userId === id)) {
+            set(KEYS.PHOTOS, photos.map(p => p.userId === id ? {
+              ...p,
+              authorName: nextUsername,
+              authorAvatar: nextAvatar || p.authorAvatar
+            } : p));
+          }
+
+          const videos = get<Video[]>(KEYS.VIDEOS, []);
+          if (videos.some(v => v.userId === id)) {
+            set(KEYS.VIDEOS, videos.map(v => v.userId === id ? {
+              ...v,
+              authorName: nextUsername,
+              authorAvatar: nextAvatar || v.authorAvatar
+            } : v));
+          }
+        }
+      }
     }
   },
 
@@ -1661,9 +1669,10 @@ export const db = {
       };
       const faviconUrl = stored?.faviconUrl || "/favicon.svg";
       const faviconUpdatedAt = stored?.faviconUpdatedAt ?? 0;
+      const enableFloatingToasts = stored?.enableFloatingToasts ?? true;
       const creatorMasterpiecesBlur = stored?.creatorMasterpiecesBlur ?? false;
       const exploreItemsPerPage = stored?.exploreItemsPerPage ?? 12;
-      return { ...DEFAULT_SYSTEM_SETTINGS, ...stored, mediaApproval, faviconUrl, faviconUpdatedAt, creatorMasterpiecesBlur, exploreItemsPerPage };
+      return { ...DEFAULT_SYSTEM_SETTINGS, ...stored, mediaApproval, faviconUrl, faviconUpdatedAt, enableFloatingToasts, creatorMasterpiecesBlur, exploreItemsPerPage };
     },
     save: (updates: Partial<SystemSettings>) => {
       const current = db.settings.get();
@@ -1915,14 +1924,32 @@ export const db = {
         b.toLowerCase() !== badgeName.toLowerCase()
       );
 
+      const nowIso = new Date().toISOString();
       set(KEYS.USERS, users.map(u => u.id === targetUserId ? {
         ...u,
+        updatedAt: nowIso,
         profile: {
           ...u.profile,
           badges: updatedBadges,
-          activeBadge: u.profile?.activeBadge === badgeName ? undefined : u.profile?.activeBadge
+          activeBadge: (u.profile?.activeBadge?.toLowerCase() === badgeName.toLowerCase() || u.profile?.activeBadge?.toLowerCase() === badgeId.toLowerCase())
+            ? undefined
+            : u.profile?.activeBadge
         }
       } : u));
+
+      // Mark matching award history entries as REVOKED
+      const existingAwards = get<UserBadgeAward[]>(KEYS.BADGE_AWARDS, []);
+      const updatedAwards = existingAwards.map(a => {
+        if (
+          a.userId === targetUserId &&
+          a.status !== "REVOKED" &&
+          (a.badgeId.toLowerCase() === badgeId.toLowerCase() || a.badgeName.toLowerCase() === badgeName.toLowerCase())
+        ) {
+          return { ...a, status: "REVOKED" as const };
+        }
+        return a;
+      });
+      set(KEYS.BADGE_AWARDS, updatedAwards);
 
       db.logs.add(
         "BADGE_MANAGEMENT",

@@ -44,22 +44,30 @@ const toIso = (val?: string | null): string => {
   return val;
 };
 
+let hasUsersUpdatedAtColumn = false;
+
 const MAPPERS: Record<string, Mapper> = {
   [STORAGE_KEYS.USERS]: {
     table: "users",
     orderQuery: "select=*&order=created_at.asc",
     getKey: (u) => String(u.id),
-    toRow: (u) => ({
-      id: u.id,
-      email: u.email,
-      username: u.username,
-      password_hash: u.passwordHash || "",
-      role: u.role || "USER",
-      is_suspended: Boolean(u.isSuspended),
-      email_verified: u.emailVerified ?? true,
-      profile: u.profile || {},
-      created_at: toIso(u.createdAt),
-    }),
+    toRow: (u) => {
+      const row: Record<string, any> = {
+        id: u.id,
+        email: u.email,
+        username: u.username,
+        password_hash: u.passwordHash || "",
+        role: u.role || "USER",
+        is_suspended: Boolean(u.isSuspended),
+        email_verified: u.emailVerified ?? true,
+        profile: u.profile || {},
+        created_at: toIso(u.createdAt),
+      };
+      if (hasUsersUpdatedAtColumn) {
+        row.updated_at = toIso(u.updatedAt || u.createdAt);
+      }
+      return row;
+    },
     fromRow: (r) => ({
       id: r.id,
       email: r.email,
@@ -70,6 +78,7 @@ const MAPPERS: Record<string, Mapper> = {
       emailVerified: r.email_verified ?? true,
       profile: r.profile || {},
       createdAt: r.created_at,
+      updatedAt: r.updated_at || r.created_at,
     }),
   },
 
@@ -103,6 +112,7 @@ const MAPPERS: Record<string, Mapper> = {
       enable_email_verification: s.enableEmailVerification ?? true,
       enable_push_notifications: s.enablePushNotifications ?? false,
       enable_realtime_stream: s.enableRealtimeStream ?? true,
+      enable_floating_toasts: s.enableFloatingToasts ?? true,
       creator_masterpieces_blur: s.creatorMasterpiecesBlur ?? false,
       explore_items_per_page: s.exploreItemsPerPage ?? 12,
       media_approval: s.mediaApproval ?? { photo: true, video: false, blog: true },
@@ -131,6 +141,7 @@ const MAPPERS: Record<string, Mapper> = {
       enableEmailVerification: Boolean(r.enable_email_verification),
       enablePushNotifications: Boolean(r.enable_push_notifications),
       enableRealtimeStream: Boolean(r.enable_realtime_stream),
+      enableFloatingToasts: r.enable_floating_toasts !== undefined ? Boolean(r.enable_floating_to_asts) : true,
       creatorMasterpiecesBlur: Boolean(r.creator_masterpieces_blur),
       exploreItemsPerPage: Number(r.explore_items_per_page ?? 12),
       mediaApproval: r.media_approval ?? { photo: true, video: false, blog: true },
@@ -828,10 +839,20 @@ const MAPPERS: Record<string, Mapper> = {
 // Snapshot of serialized DB rows synced with Supabase per storage key
 const SYNC_SNAPSHOT: Record<string, Map<string, string>> = {};
 // Sequential promise chain per key to prevent race conditions during rapid updates
-const SYNC_QUEUE: Record<string, Promise<void>> = {};
+const SYNC_QUEUE: Record<string, Promise<any>> = {};
+const DIRTY_KEYS = new Set<string>();
+const IN_FLIGHT_KEYS = new Set<string>();
+const LAST_LOCAL_WRITE_AT: Record<string, number> = {};
+const LATEST_DATA: Record<string, any> = {};
 let supabaseSchemaReady = false;
 
 export const isSupabaseSchemaReady = () => supabaseSchemaReady;
+
+export const isKeyPendingSync = (key: string): boolean => {
+  if (DIRTY_KEYS.has(key) || IN_FLIGHT_KEYS.has(key)) return true;
+  const lastWrite = LAST_LOCAL_WRITE_AT[key] || 0;
+  return Date.now() - lastWrite < 3000;
+};
 
 const updateSnapshot = (key: string, items: any) => {
   const mapper = MAPPERS[key];
@@ -893,21 +914,32 @@ export async function hydrateAllFromSupabase(): Promise<HydrationReport> {
     anyOk = true;
     const rows = res.data || [];
 
+    if (key === STORAGE_KEYS.USERS && rows.length > 0 && Object.prototype.hasOwnProperty.call(rows[0], "updated_at")) {
+      hasUsersUpdatedAtColumn = true;
+    }
+
+    // Do not overwrite snapshot if local key has pending/in-flight writes
+    const keepLocalPending = isKeyPendingSync(key);
+
     if (mapper.isSingleton) {
       if (rows.length > 0) {
         const mapped = mapper.fromRow(rows[0]);
-        report.dataByKey[key] = mapped;
-        report.loadedKeys.add(key);
-        updateSnapshot(key, mapped);
+        if (!keepLocalPending) {
+          report.dataByKey[key] = mapped;
+          report.loadedKeys.add(key);
+          updateSnapshot(key, mapped);
+        }
         report.remoteHasCoreSeed = true;
-      } else {
+      } else if (!keepLocalPending) {
         SYNC_SNAPSHOT[key] = new Map();
       }
     } else {
       const mapped = rows.map((r) => mapper.fromRow(r));
-      report.dataByKey[key] = mapped;
-      report.loadedKeys.add(key);
-      updateSnapshot(key, mapped);
+      if (!keepLocalPending) {
+        report.dataByKey[key] = mapped;
+        report.loadedKeys.add(key);
+        updateSnapshot(key, mapped);
+      }
       if (key === STORAGE_KEYS.USERS && mapped.length > 0) {
         report.remoteHasCoreSeed = true;
       }
@@ -962,73 +994,153 @@ export async function pushInitialSnapshotToSupabase(
   }
 }
 
-async function syncKeyToSupabaseNow(key: string, data: any): Promise<void> {
-  if (!supabaseSchemaReady || !isSupabaseConfigured()) return;
+async function syncKeyToSupabaseNow(
+  key: string,
+  data: any
+): Promise<{ ok: boolean; error?: string }> {
+  if (!isSupabaseConfigured()) {
+    return { ok: false, error: "Supabase not configured" };
+  }
+  if (!supabaseSchemaReady) {
+    return { ok: false, error: "Database schema belum siap. Jalankan /schema.sql di Supabase SQL Editor." };
+  }
   const mapper = MAPPERS[key];
-  if (!mapper) return;
+  if (!mapper) return { ok: true };
 
-  const prevMap = SYNC_SNAPSHOT[key] || new Map<string, string>();
-  const nextMap = new Map<string, string>();
+  IN_FLIGHT_KEYS.add(key);
+  try {
+    const prevMap = SYNC_SNAPSHOT[key] || new Map<string, string>();
+    const nextMap = new Map<string, string>();
 
-  if (mapper.isSingleton) {
-    if (!data || typeof data !== "object") return;
-    const row = mapper.toRow(data);
-    const serialized = JSON.stringify(row);
-    nextMap.set("1", serialized);
-    if (prevMap.get("1") !== serialized) {
-      const res = await supabaseUpsert(mapper.table, [row], "id");
-      if (res.ok) SYNC_SNAPSHOT[key] = nextMap;
+    if (mapper.isSingleton) {
+      if (!data || typeof data !== "object") return { ok: true };
+      const row = mapper.toRow(data);
+      const serialized = JSON.stringify(row);
+      nextMap.set("1", serialized);
+      if (prevMap.get("1") !== serialized) {
+        const res = await supabaseUpsert(mapper.table, [row], "id");
+        if (!res.ok) {
+          return { ok: false, error: res.error || `Gagal menyimpan ${mapper.table}` };
+        }
+        SYNC_SNAPSHOT[key] = nextMap;
+      }
+      DIRTY_KEYS.delete(key);
+      return { ok: true };
     }
-    return;
-  }
 
-  if (!Array.isArray(data)) return;
+    if (!Array.isArray(data)) return { ok: true };
 
-  const toUpsert: Record<string, any>[] = [];
-  for (const item of data) {
-    if (!item) continue;
-    const k = mapper.getKey(item);
-    const row = mapper.toRow(item);
-    const serialized = JSON.stringify(row);
-    nextMap.set(k, serialized);
-    if (prevMap.get(k) !== serialized) {
-      toUpsert.push(row);
+    const toUpsert: Record<string, any>[] = [];
+    for (const item of data) {
+      if (!item) continue;
+      const k = mapper.getKey(item);
+      const row = mapper.toRow(item);
+      const serialized = JSON.stringify(row);
+      nextMap.set(k, serialized);
+      if (prevMap.get(k) !== serialized) {
+        toUpsert.push(row);
+      }
     }
-  }
 
-  const removedKeys: string[] = [];
-  prevMap.forEach((_, k) => {
-    if (!nextMap.has(k)) {
-      removedKeys.push(k);
+    const removedKeys: string[] = [];
+    prevMap.forEach((_, k) => {
+      if (!nextMap.has(k)) {
+        removedKeys.push(k);
+      }
+    });
+
+    if (toUpsert.length === 0 && removedKeys.length === 0) {
+      DIRTY_KEYS.delete(key);
+      return { ok: true };
     }
-  });
 
-  if (toUpsert.length === 0 && removedKeys.length === 0) return;
-
-  if (toUpsert.length > 0) {
-    const conflictTarget = mapper.isCompositeFollow ? "follower_id,following_id" : "id";
-    await supabaseUpsert(mapper.table, toUpsert, conflictTarget);
-  }
-
-  if (removedKeys.length > 0) {
-    if (mapper.isCompositeFollow) {
-      const pairs = removedKeys.map((k) => {
-        const [followerId, followingId] = k.split(":::");
-        return { followerId, followingId };
-      });
-      await supabaseDeleteFollows(pairs);
-    } else {
-      await supabaseDeleteIds(mapper.table, removedKeys, "id");
+    if (toUpsert.length > 0) {
+      const conflictTarget = mapper.isCompositeFollow ? "follower_id,following_id" : "id";
+      const upsertRes = await supabaseUpsert(mapper.table, toUpsert, conflictTarget);
+      if (!upsertRes.ok) {
+        return { ok: false, error: upsertRes.error || `Gagal menyimpan ke tabel ${mapper.table}` };
+      }
     }
-  }
 
-  SYNC_SNAPSHOT[key] = nextMap;
+    if (removedKeys.length > 0) {
+      if (mapper.isCompositeFollow) {
+        const pairs = removedKeys.map((k) => {
+          const [followerId, followingId] = k.split(":::");
+          return { followerId, followingId };
+        });
+        const delRes = await supabaseDeleteFollows(pairs);
+        if (!delRes.ok) {
+          return { ok: false, error: delRes.error || "Gagal menghapus data follow" };
+        }
+      } else {
+        const delRes = await supabaseDeleteIds(mapper.table, removedKeys, "id");
+        if (!delRes.ok) {
+          return { ok: false, error: delRes.error || `Gagal menghapus dari tabel ${mapper.table}` };
+        }
+      }
+    }
+
+    SYNC_SNAPSHOT[key] = nextMap;
+    DIRTY_KEYS.delete(key);
+    return { ok: true };
+  } finally {
+    IN_FLIGHT_KEYS.delete(key);
+  }
 }
 
 export function scheduleSupabaseSync(key: string, data: any): void {
-  if (!supabaseSchemaReady || !isSupabaseConfigured() || !MAPPERS[key]) return;
+  if (!MAPPERS[key]) return;
+  LATEST_DATA[key] = data;
+  DIRTY_KEYS.add(key);
+  LAST_LOCAL_WRITE_AT[key] = Date.now();
+  if (!supabaseSchemaReady || !isSupabaseConfigured()) return;
   const prevChain = SYNC_QUEUE[key] || Promise.resolve();
   SYNC_QUEUE[key] = prevChain
     .catch(() => undefined)
     .then(() => syncKeyToSupabaseNow(key, data));
+}
+
+export async function flushSupabaseSync(
+  keys?: string[],
+  cacheRef?: Record<string, any>
+): Promise<{ ok: boolean; error?: string }> {
+  if (!isSupabaseConfigured()) {
+    return { ok: false, error: "Supabase belum dikonfigurasi." };
+  }
+  if (!supabaseSchemaReady) {
+    return { ok: false, error: "Schema Supabase belum siap. Jalankan /schema.sql di Supabase SQL Editor." };
+  }
+
+  const targetKeys =
+    keys && keys.length > 0
+      ? keys.filter((k) => Boolean(MAPPERS[k]))
+      : Object.keys(MAPPERS).filter((k) => DIRTY_KEYS.has(k) || Boolean(SYNC_QUEUE[k]));
+
+  let firstError: string | undefined;
+
+  for (const key of targetKeys) {
+    if (SYNC_QUEUE[key]) {
+      try {
+        const queuedRes = await SYNC_QUEUE[key];
+        if (queuedRes && queuedRes.ok === false && !firstError) {
+          firstError = queuedRes.error;
+        }
+      } catch (err: any) {
+        if (!firstError) firstError = err?.message || "Sync error";
+      }
+    }
+
+    const latest = cacheRef?.[key] !== undefined ? cacheRef[key] : LATEST_DATA[key];
+    if (latest !== undefined && DIRTY_KEYS.has(key)) {
+      const res = await syncKeyToSupabaseNow(key, latest);
+      if (!res.ok && !firstError) {
+        firstError = res.error;
+      }
+    }
+  }
+
+  if (firstError) {
+    return { ok: false, error: firstError };
+  }
+  return { ok: true };
 }

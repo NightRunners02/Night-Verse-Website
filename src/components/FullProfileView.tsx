@@ -41,6 +41,7 @@ import {
 } from "lucide-react";
 import { useAppState } from "../context/AppState.js";
 import { db } from "../lib/db.js";
+import { getBadgeIconComponent } from "../lib/badgeIcons.js";
 import { motion, AnimatePresence } from "motion/react";
 import { RoleBadge } from "./RoleBadge.js";
 import { BadgeDefinition, User } from "../types.js";
@@ -284,9 +285,11 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
   const userBadgeNames = profile.badges || [];
 
   const earnedBadges = allBadges.filter((b) => {
-    if (userBadgeNames.some((ub) => ub.toLowerCase() === b.id.toLowerCase() || ub.toLowerCase() === b.name.toLowerCase())) {
-      return true;
-    }
+    const heldDirectly = userBadgeNames.some(
+      (ub) => ub.toLowerCase() === b.id.toLowerCase() || ub.toLowerCase() === b.name.toLowerCase()
+    );
+    if (heldDirectly) return true;
+    if (b.status === "INACTIVE") return false;
     if ((b.id === "super-admin" || b.name.toLowerCase() === "super admin") && profileUser.role === "SUPER_ADMIN") return true;
     if ((b.id === "administrator" || b.name.toLowerCase() === "administrator") && (profileUser.role === "ADMIN" || profileUser.role === "SUPER_ADMIN")) return true;
     if ((b.id === "moderator" || b.name.toLowerCase() === "moderator") && profileUser.role === "MODERATOR") return true;
@@ -583,16 +586,19 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
                 </div>
 
                 <div className="flex flex-wrap gap-2">
-                  {earnedBadges.map((badge) => (
-                    <button
-                      key={badge.id}
-                      onClick={() => setSelectedBadge(badge)}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-slate-900 hover:bg-slate-850 border border-slate-800 hover:border-amber-500/50 rounded-xl text-xs transition-all cursor-pointer group"
-                    >
-                      <Sparkles className="w-3 h-3 text-amber-400 group-hover:scale-110 transition-transform" />
-                      <span className="font-space font-bold text-white text-[11px]">{badge.name}</span>
-                    </button>
-                  ))}
+                  {earnedBadges.map((badge) => {
+                    const BadgeIcon = getBadgeIconComponent(badge.icon);
+                    return (
+                      <button
+                        key={badge.id}
+                        onClick={() => setSelectedBadge(badge)}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 ${badge.bgColor || "bg-slate-900"} border ${badge.borderColor || "border-slate-800"} hover:brightness-125 rounded-xl text-xs transition-all cursor-pointer group`}
+                      >
+                        <BadgeIcon className={`w-3.5 h-3.5 ${badge.color || "text-amber-400"} group-hover:scale-110 transition-transform`} />
+                        <span className="font-space font-bold text-white text-[11px]">{badge.name}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -873,9 +879,14 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-slate-900 border border-slate-800 rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center space-y-4"
             >
-              <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mx-auto">
-                <Trophy className="w-8 h-8" />
-              </div>
+              {(() => {
+                const ModalBadgeIcon = getBadgeIconComponent(selectedBadge.icon);
+                return (
+                  <div className={`w-16 h-16 rounded-2xl ${selectedBadge.bgColor || "bg-amber-500/10"} border ${selectedBadge.borderColor || "border-amber-500/30"} flex items-center justify-center ${selectedBadge.color || "text-amber-400"} mx-auto`}>
+                    <ModalBadgeIcon className="w-8 h-8" />
+                  </div>
+                );
+              })()}
 
               <div>
                 <span className="text-[10px] font-mono font-bold text-amber-400 bg-amber-950/60 px-2.5 py-0.5 rounded-full border border-amber-900/60 uppercase">

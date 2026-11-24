@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { ArrowLeft, ShieldAlert, KeyRound, Mail, User as UserIcon, Lock, Sparkles, Eye, EyeOff } from "lucide-react";
 import { useAppState } from "../context/AppState.js";
 import { db } from "../lib/db.js";
+import { STORAGE_KEYS } from "../lib/supabaseSync.js";
 import { hashPassword } from "../lib/crypto.js";
 
 interface AuthPageProps {
@@ -36,7 +37,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialIsAdmin = false }) =>
 
   // Load remembered username if exists
   useEffect(() => {
-    const remembered = localStorage.getItem("nv_remembered_username");
+    const remembered = sessionStorage.getItem("nv_remembered_username");
     if (remembered) {
       setUsername(remembered);
       setRememberMe(true);
@@ -64,11 +65,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialIsAdmin = false }) =>
           db.users.update(foundUser.id, { passwordHash: inputHash });
         }
 
-        // Handle Remember Me
+        // Handle Remember Me (session-scoped, no localStorage)
         if (rememberMe) {
-          localStorage.setItem("nv_remembered_username", username);
+          sessionStorage.setItem("nv_remembered_username", username);
         } else {
-          localStorage.removeItem("nv_remembered_username");
+          sessionStorage.removeItem("nv_remembered_username");
         }
 
         login(foundUser, foundUser.id);
@@ -134,36 +135,42 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialIsAdmin = false }) =>
     }
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email || !username || !password || !fullName) {
       triggerToast("Missing Parameters", "All profile configuration elements are mandatory", "info");
       return;
     }
 
-    const exists = db.users.getByLoginKey(username) || db.users.getByLoginKey(email);
+    const trimmedUsername = username.trim();
+    const trimmedEmail = email.trim().toLowerCase();
+    const exists = db.users.getByLoginKey(trimmedUsername) || db.users.getByLoginKey(trimmedEmail);
     if (exists) {
       triggerToast("Registration Failed", "Username or email identifier already exists in registry.", "error");
       return;
     }
 
     const newUser = {
-      id: Math.random().toString(36).substr(2, 9),
-      email,
-      username,
+      id: "user-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6),
+      email: trimmedEmail,
+      username: trimmedUsername,
       passwordHash: hashPassword(password),
       role: "USER" as const,
       isSuspended: false,
       emailVerified: false,
       createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       profile: {
-        fullName,
+        fullName: fullName.trim(),
         bio: "NightVerse Newcomer",
-        avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`
+        avatarUrl: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(trimmedUsername)}`,
+        badges: ["User"],
+        activeBadge: "User"
       }
     };
 
     db.users.add(newUser);
+    await db.syncNow([STORAGE_KEYS.USERS]);
     login(newUser, newUser.id);
     triggerToast("Registration Completed!", "Your profile is successfully registered and logged in.", "success");
   };
@@ -182,7 +189,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialIsAdmin = false }) =>
     }
   };
 
-  const handleResetPasswordSubmit = (e: React.FormEvent) => {
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPassword || !resetUserId) return;
 
@@ -190,6 +197,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ initialIsAdmin = false }) =>
       emailVerified: true,
       passwordHash: hashPassword(newPassword)
     });
+    await db.syncNow([STORAGE_KEYS.USERS]);
     
     createNotification({
       userId: resetUserId,

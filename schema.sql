@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS users (
     is_suspended BOOLEAN NOT NULL DEFAULT FALSE,
     email_verified BOOLEAN NOT NULL DEFAULT TRUE,
     profile JSONB NOT NULL DEFAULT '{}'::jsonb,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 -- 2) blogs
@@ -257,6 +258,7 @@ CREATE TABLE IF NOT EXISTS system_settings (
     enable_email_verification BOOLEAN NOT NULL DEFAULT TRUE,
     enable_push_notifications BOOLEAN NOT NULL DEFAULT FALSE,
     enable_realtime_stream BOOLEAN NOT NULL DEFAULT TRUE,
+    enable_floating_toasts BOOLEAN NOT NULL DEFAULT TRUE,
     creator_masterpieces_blur BOOLEAN NOT NULL DEFAULT FALSE,
     explore_items_per_page INT NOT NULL DEFAULT 12,
     media_approval JSONB NOT NULL DEFAULT '{"photo":true,"video":false,"blog":true}'::jsonb
@@ -446,7 +448,18 @@ ALTER TABLE reports ADD COLUMN IF NOT EXISTS creator_username TEXT;
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE reports ADD COLUMN IF NOT EXISTS is_resolved BOOLEAN NOT NULL DEFAULT FALSE;
 
+ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+ALTER TABLE badges ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'ACTIVE';
+ALTER TABLE badges ADD COLUMN IF NOT EXISTS color TEXT;
+ALTER TABLE badges ADD COLUMN IF NOT EXISTS bg_color TEXT;
+ALTER TABLE badges ADD COLUMN IF NOT EXISTS border_color TEXT;
+
+ALTER TABLE badge_awards ADD COLUMN IF NOT EXISTS reason TEXT;
+ALTER TABLE badge_awards ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'SUCCESS';
+
 ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS logo_url TEXT;
+ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS enable_floating_toasts BOOLEAN NOT NULL DEFAULT TRUE;
 ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS creator_masterpieces_blur BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS explore_items_per_page INT NOT NULL DEFAULT 12;
 
@@ -455,6 +468,7 @@ ALTER TABLE system_settings ADD COLUMN IF NOT EXISTS explore_items_per_page INT 
 -- ------------------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_updated_at ON users(updated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_blogs_user_id ON blogs(user_id);
 CREATE INDEX IF NOT EXISTS idx_blogs_status_visibility ON blogs(status, visibility);
 CREATE INDEX IF NOT EXISTS idx_photos_user_id ON photos(user_id);
@@ -467,7 +481,9 @@ CREATE INDEX IF NOT EXISTS idx_follows_following ON follows(following_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id, is_read);
 CREATE INDEX IF NOT EXISTS idx_reports_status ON reports(status, is_resolved);
 CREATE INDEX IF NOT EXISTS idx_logs_timestamp ON logs(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_badges_status ON badges(status, tier DESC);
 CREATE INDEX IF NOT EXISTS idx_badge_awards_user_id ON badge_awards(user_id);
+CREATE INDEX IF NOT EXISTS idx_badge_awards_badge_id ON badge_awards(badge_id);
 CREATE INDEX IF NOT EXISTS idx_documentations_category ON documentations(category_id, status);
 CREATE INDEX IF NOT EXISTS idx_doc_revisions_doc_id ON doc_revisions(documentation_id, revision_number DESC);
 CREATE INDEX IF NOT EXISTS idx_support_tickets_user_id ON support_tickets(user_id, status);
@@ -533,12 +549,19 @@ DO $$
 DECLARE
     rt_tbl TEXT;
     rt_tables TEXT[] := ARRAY[
-        'blogs', 'photos', 'videos', 'tags', 'comments',
-        'notifications', 'support_tickets', 'ticket_messages', 'system_settings'
+        'users', 'blogs', 'photos', 'videos', 'tags', 'comments', 'follows',
+        'notifications', 'reports', 'logs', 'system_settings', 'badges',
+        'badge_awards', 'doc_categories', 'documentations', 'doc_revisions',
+        'changelogs', 'support_tickets', 'ticket_messages'
     ];
 BEGIN
     IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
         FOREACH rt_tbl IN ARRAY rt_tables LOOP
+            BEGIN
+                EXECUTE format('ALTER TABLE public.%I REPLICA IDENTITY FULL;', rt_tbl);
+            EXCEPTION WHEN OTHERS THEN
+                NULL;
+            END;
             BEGIN
                 EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE public.%I;', rt_tbl);
             EXCEPTION WHEN OTHERS THEN
@@ -619,7 +642,7 @@ INSERT INTO system_settings (
     primary_color, secondary_color, homepage_banner, hero_title, hero_subtitle, footer_text,
     seo_description, seo_keywords, og_image, max_image_size_mb, max_video_size_mb,
     allowed_formats, smtp_host, smtp_port, enable_email_verification,
-    enable_push_notifications, enable_realtime_stream, creator_masterpieces_blur,
+    enable_push_notifications, enable_realtime_stream, enable_floating_toasts, creator_masterpieces_blur,
     explore_items_per_page, media_approval
 ) VALUES (
     1,
@@ -645,6 +668,7 @@ INSERT INTO system_settings (
     587,
     TRUE,
     FALSE,
+    TRUE,
     TRUE,
     FALSE,
     12,
@@ -915,7 +939,9 @@ ON CONFLICT (id) DO NOTHING;
 -- 7. RECORD MIGRATION VERSION
 -- ------------------------------------------------------------------------------
 INSERT INTO schema_migrations (version, description)
-VALUES ('20261121_001_nightverse_full_migration', 'Full idempotent NightVerse schema, columns, indexes, RLS policies, Realtime, and seed data')
+VALUES
+  ('20261121_001_nightverse_full_migration', 'Full idempotent NightVerse schema, columns, indexes, RLS policies, Realtime, and seed data'),
+  ('20261124_002_profile_badges_realtime', 'Add users.updated_at, badge indexes/columns, and full 19-table Realtime publication')
 ON CONFLICT (version) DO NOTHING;
 
 -- ==============================================================================

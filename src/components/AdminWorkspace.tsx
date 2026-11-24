@@ -56,7 +56,9 @@ import {
   Filter,
   CheckCheck,
   User as UserIcon,
-  Grid
+  Grid,
+  BellRing,
+  BellOff
 } from "lucide-react";
 import { useAppState } from "../context/AppState.js";
 import type { User, SystemSettings, BadgeDefinition, UserBadgeAward, BadgeCategory, SupportTicket, TicketMessage } from "../types.js";
@@ -65,6 +67,8 @@ import { DeleteConfirmationModal } from "./DeleteConfirmationModal.js";
 import { RoleBadge } from "./RoleBadge.js";
 import { TagAnalytics } from "./TagAnalytics.js";
 import { db } from "../lib/db.js";
+import { STORAGE_KEYS } from "../lib/supabaseSync.js";
+import { getBadgeIconComponent } from "../lib/badgeIcons.js";
 import { validateFaviconFile, DEFAULT_FAVICON_URL } from "../lib/favicon.js";
 import { DocumentationManagement } from "./DocumentationManagement.js";
 import { TicketCenter } from "./TicketCenter.js";
@@ -111,21 +115,19 @@ export const AdminWorkspace: React.FC = () => {
   // Super Admin Tools: Tag Preview Manager states
   const [selectedTagDetail, setSelectedTagDetail] = useState<any | null>(null);
   const [deletedTagsBackup, setDeletedTagsBackup] = useState<any[]>(() => {
-    try {
-      const saved = localStorage.getItem(`nv_deleted_tags_${user?.id}`);
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
+    return Array.isArray(user?.profile?.deletedTagsVault) ? user.profile.deletedTagsVault : [];
   });
 
-  // Persist local blocked/deleted list helpers
+  // Persist deleted tags purge vault in SQL user profile
   const saveDeletedTagsLocal = (newlist: any[]) => {
     setDeletedTagsBackup(newlist);
-    try {
-      localStorage.setItem(`nv_deleted_tags_${user?.id}`, JSON.stringify(newlist));
-    } catch(err) {
-      console.warn("Storage quota exceeded", err);
+    if (user?.id) {
+      db.users.update(user.id, {
+        profile: {
+          ...user.profile,
+          deletedTagsVault: newlist,
+        },
+      });
     }
   };
 
@@ -181,6 +183,8 @@ export const AdminWorkspace: React.FC = () => {
   const [tagsStats, setTagsStats] = useState<any[]>([]);
   const blockedTagsList = tagsStats.filter(t => t.isBanned).map(t => t.name.toLowerCase());
   const [systemLogs, setSystemLogs] = useState<any[]>([]);
+  const [hoveredChartDay, setHoveredChartDay] = useState<number | null>(null);
+  const [chartTimeDays, setChartTimeDays] = useState<7 | 14 | 30>(7);
   
   // Tag moderation forms state
   const [selectedTagToMod, setSelectedTagToMod] = useState<any | null>(null);
@@ -241,7 +245,8 @@ export const AdminWorkspace: React.FC = () => {
   const [allSystemBadges, setAllSystemBadges] = useState<BadgeDefinition[]>([]);
   const [allBadgeAwards, setAllBadgeAwards] = useState<UserBadgeAward[]>([]);
   const [badgeAuditSearch, setBadgeAuditSearch] = useState("");
-  const [selectedBadgeToManage, setSelectedBadgeToManage] = useState<BadgeDefinition | null>(null);
+  const [confirmBatchSuspend, setConfirmBatchSuspend] = useState(false);
+  const [badgeToDeleteId, setBadgeToDeleteId] = useState<string | null>(null);
   const [newBadgeForm, setNewBadgeForm] = useState<{
     id: string;
     name: string;
@@ -308,6 +313,13 @@ export const AdminWorkspace: React.FC = () => {
     const allLogs = db.logs.getAll();
 
     setUsersList(allUsers);
+    setInspectedUser(prev => {
+      if (!prev) return prev;
+      return allUsers.find(u => u.id === prev.id) || prev;
+    });
+    setAllBlogs(allBlogs);
+    setAllPhotos(allPhotos);
+    setAllVideos(allVideos);
     setReportsList(allReports);
     setTagsStats(allTags);
     setSystemLogs(allLogs);
@@ -477,22 +489,6 @@ export const AdminWorkspace: React.FC = () => {
     return false;
   };
 
-  const getBadgeIconComponent = (iconName?: string) => {
-    switch (iconName?.toLowerCase()) {
-      case "shieldalert": return ShieldAlert;
-      case "shieldcheck": return ShieldCheck;
-      case "shield": return Shield;
-      case "checkcircle2": return CheckCircle2;
-      case "trophy": return Trophy;
-      case "crown": return Crown;
-      case "sparkles": return Sparkles;
-      case "star": return Star;
-      case "award": return Award;
-      case "lock": return Lock;
-      case "user": default: return UserIcon;
-    }
-  };
-
   const handleUnlockBadgeSubmit = async () => {
     if (!inspectedUser || !user) return;
     setIsUnlockingBadge(true);
@@ -525,6 +521,18 @@ export const AdminWorkspace: React.FC = () => {
         link: "DASHBOARD:profile-settings"
       });
 
+      const syncRes = await db.syncNow([
+        STORAGE_KEYS.USERS,
+        STORAGE_KEYS.BADGE_AWARDS,
+        STORAGE_KEYS.LOGS,
+        STORAGE_KEYS.NOTIFICATIONS
+      ]);
+      if (!syncRes.ok) {
+        triggerToast("Gagal Sinkronisasi Badge", syncRes.error || "Badge gagal tersimpan ke Supabase SQL.", "error");
+        setIsUnlockingBadge(false);
+        return;
+      }
+
       triggerToast("Badge Unlocked 🏆", result.message, "success");
       triggerDBSync();
 
@@ -544,7 +552,7 @@ export const AdminWorkspace: React.FC = () => {
     }
   };
 
-  const handleRevokeBadge = (targetUserId: string, badgeId: string) => {
+  const handleRevokeBadge = async (targetUserId: string, badgeId: string) => {
     if (!user) return;
     const result = db.badges.revokeBadge({
       operatorRole: user.role,
@@ -558,6 +566,16 @@ export const AdminWorkspace: React.FC = () => {
       return;
     }
 
+    const syncRes = await db.syncNow([
+      STORAGE_KEYS.USERS,
+      STORAGE_KEYS.BADGE_AWARDS,
+      STORAGE_KEYS.LOGS
+    ]);
+    if (!syncRes.ok) {
+      triggerToast("Gagal Sinkronisasi", syncRes.error || "Pencabutan badge gagal disinkronkan ke SQL.", "error");
+      return;
+    }
+
     triggerToast("Badge Revoked", result.message, "info");
     triggerDBSync();
     const updatedUser = db.users.getById(targetUserId);
@@ -567,7 +585,7 @@ export const AdminWorkspace: React.FC = () => {
     loadAllAdminMetrics();
   };
 
-  const handleCreateBadgeSubmit = (e: React.FormEvent) => {
+  const handleCreateBadgeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (user?.role !== "SUPER_ADMIN") {
       triggerToast("Unauthorized", "Only Super Admin can define new badges.", "error");
@@ -611,7 +629,12 @@ export const AdminWorkspace: React.FC = () => {
 
       db.badges.add(newBadge);
       db.logs.add("BADGE_MANAGEMENT", `Super Admin @${user.username} created badge definition "${newBadge.name}" (Tier ${newBadge.tier})`, user.username);
-      triggerToast("Badge Created ✨", `New badge "${newBadge.name}" registered in system.`, "success");
+      const syncRes = await db.syncNow([STORAGE_KEYS.BADGES, STORAGE_KEYS.LOGS]);
+      if (!syncRes.ok) {
+        triggerToast("Gagal Menyimpan Badge", syncRes.error || "Badge baru gagal disimpan ke Supabase SQL.", "error");
+        return;
+      }
+      triggerToast("Badge Created ✨", `Badge "${newBadge.name}" tersimpan di database secara real-time.`, "success");
       triggerDBSync();
       loadAllAdminMetrics();
       setCreateBadgeModalOpen(false);
@@ -628,6 +651,36 @@ export const AdminWorkspace: React.FC = () => {
     } catch (err: any) {
       triggerToast("Creation Error", err.message || "Failed to create badge.", "error");
     }
+  };
+
+  const handleToggleBadgeStatus = async (badge: BadgeDefinition) => {
+    if (user?.role !== "SUPER_ADMIN") return;
+    const nextStatus = badge.status === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+    db.badges.update(badge.id, { status: nextStatus });
+    db.logs.add("BADGE_MANAGEMENT", `Super Admin @${user.username} set badge "${badge.name}" status to ${nextStatus}`, user.username);
+    const syncRes = await db.syncNow([STORAGE_KEYS.BADGES, STORAGE_KEYS.LOGS]);
+    if (!syncRes.ok) {
+      triggerToast("Gagal Memperbarui Status", syncRes.error || "Gagal menyimpan status badge ke SQL.", "error");
+      return;
+    }
+    triggerDBSync();
+    loadAllAdminMetrics();
+    triggerToast("Status Badge Diperbarui", `"${badge.name}" kini berstatus ${nextStatus}.`, "success");
+  };
+
+  const handleDeleteCustomBadge = async (badge: BadgeDefinition) => {
+    if (user?.role !== "SUPER_ADMIN") return;
+    db.badges.delete(badge.id);
+    db.logs.add("BADGE_MANAGEMENT", `Super Admin @${user.username} deleted custom badge "${badge.name}" (${badge.id})`, user.username);
+    const syncRes = await db.syncNow([STORAGE_KEYS.BADGES, STORAGE_KEYS.LOGS]);
+    if (!syncRes.ok) {
+      triggerToast("Gagal Menghapus Badge", syncRes.error || "Gagal menghapus badge dari SQL.", "error");
+      return;
+    }
+    setBadgeToDeleteId(null);
+    triggerDBSync();
+    loadAllAdminMetrics();
+    triggerToast("Badge Dihapus", `Definisi badge "${badge.name}" telah dihapus.`, "info");
   };
 
   // Media Approval Policy handlers (Super Admin clearance required)
@@ -768,6 +821,13 @@ export const AdminWorkspace: React.FC = () => {
     loadAllAdminMetrics();
   };
 
+  const handleToggleFloatingToasts = () => {
+    const nextVal = !(localSettings.enableFloatingToasts ?? true);
+    setLocalSettings(prev => ({ ...prev, enableFloatingToasts: nextVal }));
+    saveSystemSettings({ enableFloatingToasts: nextVal });
+    triggerDBSync();
+  };
+
   if (!user) return null;
 
   const totalPendingSize = pendingBlogs.length + pendingPhotos.length + pendingVideos.length;
@@ -891,7 +951,7 @@ export const AdminWorkspace: React.FC = () => {
   );
 
   return (
-    <div className="space-y-6 text-slate-100 font-sans overflow-y-auto custom-scrollbar" id="admin-workspace-premium">
+    <div className="space-y-6 text-slate-100 font-sans overflow-y-auto overflow-x-hidden custom-scrollbar" id="admin-workspace-premium">
       
       {/* Dynamic top aurora gradient */}
       <div className="p-6 bg-slate-900/60 border border-slate-850 rounded-3xl relative overflow-hidden backdrop-blur-md">
@@ -1008,55 +1068,227 @@ export const AdminWorkspace: React.FC = () => {
             {/* Real responsive custom SVG statistics charts */}
             <div className="lg:col-span-2 bg-slate-950 border border-slate-900 rounded-3xl p-6 space-y-6">
               
-              <div>
-                <span className="text-[9px] font-mono uppercase tracking-widest text-purple-500 font-bold block">User growth & publications volume timeline</span>
-                <h3 className="text-base font-extrabold font-space text-slate-100 mt-1">Platform Activity Metrics Trend</h3>
-              </div>
-
-              {/* SVG Area/Line graph representation */}
-              <div className="relative h-64 w-full bg-slate-900/20 border border-slate-900/70 rounded-2xl flex flex-col justify-between p-4">
-                
-                {/* Background Grid Lines */}
-                <div className="absolute inset-x-0 top-1/4 border-b border-slate-900/40 pointer-events-none"></div>
-                <div className="absolute inset-x-0 top-2/4 border-b border-slate-900/40 pointer-events-none"></div>
-                <div className="absolute inset-x-0 top-3/4 border-b border-slate-900/40 pointer-events-none"></div>
-
-                <svg className="w-full h-44 mt-4 overflow-visible" viewBox="0 0 100 20" preserveAspectRatio="none">
-                  <defs>
-                    <linearGradient id="areaGlow" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#c084fc" stopOpacity="0.25" />
-                      <stop offset="100%" stopColor="#818cf8" stopOpacity="0.0" />
-                    </linearGradient>
-                  </defs>
-                  {/* Fill Area */}
-                  <path 
-                    d="M 0,20 L 0,16 Q 20,8 40,11 T 80,4 Q 90,6 100,2 L 100,20 Z" 
-                    fill="url(#areaGlow)" 
-                  />
-                  {/* Glowing Line */}
-                  <path 
-                    d="M 0,16 Q 20,8 40,11 T 80,4 Q 90,6 100,2" 
-                    fill="none" 
-                    stroke="#c084fc" 
-                    strokeWidth="0.8" 
-                    strokeLinecap="round"
-                    className="drop-shadow-[0_2px_8px_rgba(192,132,252,0.5)]"
-                  />
-                </svg>
-
-                {/* Legend tags */}
-                <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 pt-3 border-t border-slate-900/50">
-                  <span>Mon (23)</span>
-                  <span>Tue (38)</span>
-                  <span>Wed (64)</span>
-                  <span>Thu (91)</span>
-                  <span>Fri ({dbStats.totalUsers} Active)</span>
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <span className="text-[9px] font-mono uppercase tracking-widest text-purple-400 font-bold block">User growth & publications volume timeline</span>
+                  <h3 className="text-base font-extrabold font-space text-slate-100 mt-1">Platform Activity Metrics Trend</h3>
                 </div>
-
+                {/* Time range selector */}
+                <div className="flex items-center gap-1 p-1 bg-slate-900 border border-slate-800 rounded-xl text-[10px] font-mono">
+                  {[7, 14, 30].map(days => (
+                    <button
+                      key={days}
+                      onClick={() => setChartTimeDays(days as any)}
+                      className={`px-3 py-1 rounded-lg transition-all cursor-pointer ${
+                        chartTimeDays === days
+                          ? "bg-purple-600 text-white font-bold shadow-[0_0_12px_rgba(192,132,252,0.5)]"
+                          : "text-slate-400 hover:text-slate-200"
+                      }`}
+                    >
+                      {days} Hari
+                    </button>
+                  ))}
+                </div>
               </div>
+
+              {/* SVG Area/Line graph representation — Driven by real database posts */}
+              {(() => {
+                const combinedPosts = [
+                  ...allBlogs.map(item => ({ kind: "blog" as const, createdAt: item.createdAt })),
+                  ...allPhotos.map(item => ({ kind: "photo" as const, createdAt: item.createdAt })),
+                  ...allVideos.map(item => ({ kind: "video" as const, createdAt: item.createdAt })),
+                ];
+
+                const toDayKey = (d: Date) => {
+                  const y = d.getFullYear();
+                  const m = String(d.getMonth() + 1).padStart(2, "0");
+                  const day = String(d.getDate()).padStart(2, "0");
+                  return `${y}-${m}-${day}`;
+                };
+
+                const countsByDay: Record<string, { blog: number; photo: number; video: number; total: number }> = {};
+                let latestValidDate: Date | null = null;
+
+                combinedPosts.forEach(p => {
+                  const parsed = p.createdAt ? new Date(p.createdAt) : null;
+                  if (!parsed || Number.isNaN(parsed.getTime())) return;
+                  if (!latestValidDate || parsed.getTime() > latestValidDate.getTime()) {
+                    latestValidDate = parsed;
+                  }
+                  const key = toDayKey(parsed);
+                  if (!countsByDay[key]) {
+                    countsByDay[key] = { blog: 0, photo: 0, video: 0, total: 0 };
+                  }
+                  countsByDay[key][p.kind] += 1;
+                  countsByDay[key].total += 1;
+                });
+
+                const today = new Date();
+                today.setHours(0, 0, 0, 0);
+
+                const checkHasRecent = () => {
+                  for (let i = 0; i < chartTimeDays; i++) {
+                    const d = new Date(today);
+                    d.setDate(today.getDate() - i);
+                    if ((countsByDay[toDayKey(d)]?.total || 0) > 0) return true;
+                  }
+                  return false;
+                };
+
+                const anchorEnd = checkHasRecent() || !latestValidDate
+                  ? today
+                  : (() => {
+                      const d = new Date(latestValidDate!);
+                      d.setHours(0, 0, 0, 0);
+                      return d;
+                    })();
+
+                const dayNames = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+                const buckets = Array.from({ length: chartTimeDays }, (_, idx) => {
+                  const d = new Date(anchorEnd);
+                  d.setDate(anchorEnd.getDate() - (chartTimeDays - 1 - idx));
+                  const key = toDayKey(d);
+                  const entry = countsByDay[key] || { blog: 0, photo: 0, video: 0, total: 0 };
+                  const isToday = key === toDayKey(today);
+                  const shortDate = d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+                  return {
+                    key,
+                    dayLabel: chartTimeDays > 14 ? shortDate : (isToday ? "Hari Ini" : dayNames[d.getDay()]),
+                    shortDate,
+                    ...entry,
+                  };
+                });
+
+                const maxCount = Math.max(4, ...buckets.map(b => b.total));
+                const windowTotal = buckets.reduce((acc, b) => acc + b.total, 0);
+                const points = buckets.map((b, i) => {
+                  const x = (i / (buckets.length - 1)) * 100;
+                  const y = b.total === 0 ? 82 : Math.max(25, 82 - (b.total / maxCount) * 55);
+                  return { x, y, ...b };
+                });
+
+                const linePath = points.reduce((path, pt, idx) => {
+                  if (idx === 0) return `M ${pt.x},${pt.y}`;
+                  const prev = points[idx - 1];
+                  const midX = (prev.x + pt.x) / 2;
+                  return `${path} C ${midX},${prev.y} ${midX},${pt.y} ${pt.x},${pt.y}`;
+                }, "");
+
+                const areaPath = `${linePath} L 100,85 L 0,85 Z`;
+                const activeBucket = hoveredChartDay !== null ? buckets[hoveredChartDay] : null;
+
+                return (
+                  <div className="relative h-80 w-full bg-slate-900/20 border border-slate-900/70 rounded-2xl flex flex-col justify-between p-6 overflow-hidden">
+                    {/* Top real database telemetry bar */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 z-10 text-[10px] font-mono">
+                      <div className="flex items-center gap-2 text-slate-300">
+                        <span className="px-2 py-0.5 rounded-md bg-purple-500/15 border border-purple-500/30 text-purple-300 font-bold">
+                          Total DB: {combinedPosts.length} Post
+                        </span>
+                        <span className="text-slate-400">
+                          7 Hari: <strong className="text-slate-200">{windowTotal}</strong>
+                        </span>
+                      </div>
+                      <div className="text-slate-400">
+                        {activeBucket ? (
+                          <span className="text-purple-300 font-bold">
+                            {activeBucket.shortDate}: {activeBucket.total} post ({activeBucket.photo}P • {activeBucket.blog}B • {activeBucket.video}V)
+                          </span>
+                        ) : (
+                          <span>
+                            {allPhotos.length} Photo • {allBlogs.length} Blog • {allVideos.length} Video
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Chart Plot Area */}
+                    <div className="relative flex-1 my-2">
+                      {/* Background Grid Lines + Y-Axis Scale */}
+                      <div className="absolute inset-x-0 top-[16%] border-b border-slate-800/50 pointer-events-none flex items-center">
+                        <span className="-mt-4 text-[9px] font-mono text-slate-600">{maxCount}</span>
+                      </div>
+                      <div className="absolute inset-x-0 top-[53%] border-b border-slate-800/40 pointer-events-none flex items-center">
+                        <span className="-mt-4 text-[9px] font-mono text-slate-600">{Math.ceil(maxCount / 2)}</span>
+                      </div>
+                      <div className="absolute inset-x-0 top-[90%] border-b border-slate-800/60 pointer-events-none flex items-center">
+                        <span className="-mt-4 text-[9px] font-mono text-slate-600">0</span>
+                      </div>
+
+                      <svg className="w-full h-full overflow-hidden" viewBox="0 0 100 100" preserveAspectRatio="none">
+                        <defs>
+                          <linearGradient id="areaGlow" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#c084fc" stopOpacity="0.32" />
+                            <stop offset="100%" stopColor="#818cf8" stopOpacity="0.0" />
+                          </linearGradient>
+                        </defs>
+                        {/* Fill Area */}
+                        <path
+                          d={areaPath}
+                          fill="url(#areaGlow)"
+                        />
+                        {/* Glowing Line */}
+                        <path
+                          d={linePath}
+                          fill="none"
+                          stroke="#c084fc"
+                          strokeWidth="2.5"
+                          vectorEffect="non-scaling-stroke"
+                          strokeLinecap="round"
+                          className="drop-shadow-[0_2px_8px_rgba(192,132,252,0.5)]"
+                        />
+                      </svg>
+
+                      {/* Crisp circular data points + interactive hover */}
+                      {points.map((pt, idx) => (
+                        <button
+                          key={pt.key}
+                          type="button"
+                          onMouseEnter={() => setHoveredChartDay(idx)}
+                          onMouseLeave={() => setHoveredChartDay(null)}
+                          onClick={() => setHoveredChartDay(prev => (prev === idx ? null : idx))}
+                          style={{ left: `${pt.x}%`, top: `${pt.y}%` }}
+                          className="absolute -translate-x-1/2 -translate-y-1/2 group focus:outline-none cursor-pointer p-1.5"
+                          title={`${pt.shortDate}: ${pt.total} post (${pt.photo} Photo, ${pt.blog} Blog, ${pt.video} Video)`}
+                        >
+                          <span
+                            className={`block rounded-full transition-all ${
+                              hoveredChartDay === idx
+                                ? "w-3.5 h-3.5 bg-white border-2 border-purple-400 shadow-[0_0_12px_rgba(192,132,252,0.9)]"
+                                : pt.total > 0
+                                  ? "w-2.5 h-2.5 bg-purple-400 border-2 border-slate-950 group-hover:scale-125"
+                                  : "w-2 h-2 bg-slate-700 border border-slate-900 group-hover:bg-purple-400"
+                            }`}
+                          />
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Real Day Legend tags */}
+                    <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 pt-2.5 border-t border-slate-900/50 gap-1">
+                      {buckets.map((b, idx) => (
+                        <span
+                          key={b.key}
+                          onMouseEnter={() => setHoveredChartDay(idx)}
+                          onMouseLeave={() => setHoveredChartDay(null)}
+                          className={`truncate cursor-default transition-colors ${
+                            hoveredChartDay === idx
+                              ? "text-purple-300 font-bold"
+                              : b.total > 0
+                                ? "text-slate-200"
+                                : "text-slate-500"
+                          }`}
+                        >
+                          {b.dayLabel} ({b.total})
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Pie/Donut Chart breakdown + Bar Chart breakdown */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-10">
                 
                 <div className="p-4 bg-slate-900/30 border border-slate-900 rounded-2xl flex items-center gap-6">
                   {/* Gorgeous Mini SVG Donut Chart */}
@@ -1374,27 +1606,48 @@ export const AdminWorkspace: React.FC = () => {
                         >
                           Promote to Moderator
                         </button>
-                        <button
-                          onClick={async () => {
-                            if (selectedUsersForBulk.length === 0 || !token) return;
-                            if (!window.confirm(`SUSPEND ${selectedUsersForBulk.length} USERS?`)) return;
-                            try {
-                              for (const id of selectedUsersForBulk) {
-                                const usr = usersList.find(u => u.id === id);
-                                if (usr && !usr.isSuspended) {
-                                  await handleUserMuteToggle(usr.id, false);
+                        {!confirmBatchSuspend ? (
+                          <button
+                            onClick={() => {
+                              if (selectedUsersForBulk.length === 0 || !token) return;
+                              setConfirmBatchSuspend(true);
+                            }}
+                            className="py-1.5 px-4 bg-rose-650 hover:bg-rose-600 text-white rounded-xl text-[10px] font-bold uppercase transition-all"
+                          >
+                            Batch Suspend
+                          </button>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={async () => {
+                                if (selectedUsersForBulk.length === 0 || !token) return;
+                                try {
+                                  for (const id of selectedUsersForBulk) {
+                                    const usr = usersList.find(u => u.id === id);
+                                    if (usr && !usr.isSuspended) {
+                                      await handleUserMuteToggle(usr.id, false);
+                                    }
+                                  }
+                                  triggerToast("Batch Suspended", `Successfully locked ${selectedUsersForBulk.length} accounts`, "info");
+                                  setSelectedUsersForBulk([]);
+                                } catch (err) {
+                                  triggerToast("Batch Error", "Failed some user suspensions", "error");
+                                } finally {
+                                  setConfirmBatchSuspend(false);
                                 }
-                              }
-                              triggerToast("Batch Suspended", `Successfully locked ${selectedUsersForBulk.length} accounts`, "info");
-                              setSelectedUsersForBulk([]);
-                            } catch (err) {
-                               triggerToast("Batch Error", "Failed some user suspensions", "error");
-                            }
-                          }}
-                          className="py-1.5 px-4 bg-rose-650 hover:bg-rose-600 text-white rounded-xl text-[10px] font-bold uppercase transition-all"
-                        >
-                          Batch Suspend
-                        </button>
+                              }}
+                              className="py-1.5 px-3 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-[10px] font-bold uppercase transition-all"
+                            >
+                              Confirm ({selectedUsersForBulk.length})
+                            </button>
+                            <button
+                              onClick={() => setConfirmBatchSuspend(false)}
+                              className="py-1.5 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-[10px] font-bold uppercase transition-all"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        )}
                         <button
                           onClick={() => setSelectedUsersForBulk([])}
                           className="text-[10px] text-slate-500 hover:text-slate-300 font-mono transition-colors"
@@ -2611,7 +2864,7 @@ export const AdminWorkspace: React.FC = () => {
           {/* SUB-SECTION 2: BADGE CATALOG & DEFINITIONS */}
           {badgeSubSection === "catalog" && (
             <div className="bg-slate-900/40 border border-slate-800 rounded-3xl p-6 space-y-6 backdrop-blur-md">
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 border-b border-slate-800 pb-4">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-4">
                 <div>
                   <h4 className="font-space font-black text-sm text-white uppercase tracking-wider flex items-center gap-2">
                     <Award className="w-4 h-4 text-indigo-400" />
@@ -2621,16 +2874,31 @@ export const AdminWorkspace: React.FC = () => {
                     Definisi badge resmi platform beserta tingkat kewenangan hierarki (tier) dan persyaratan perolehannya.
                   </p>
                 </div>
+
+                {user?.role === "SUPER_ADMIN" && (
+                  <button
+                    type="button"
+                    onClick={() => setCreateBadgeModalOpen(true)}
+                    className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-space font-bold uppercase text-xs rounded-xl shadow-lg shadow-rose-900/30 transition-all flex items-center gap-2 cursor-pointer active:scale-95 shrink-0"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Create New Badge</span>
+                  </button>
+                )}
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {allSystemBadges.map((b) => {
                   const Icon = getBadgeIconComponent(b.icon);
+                  const isCoreBadge = [
+                    "super-admin", "administrator", "moderator", "verified-creator",
+                    "contributor", "vip", "night-artist", "user"
+                  ].includes(b.id);
 
                   return (
                     <div
                       key={b.id}
-                      className={`p-5 rounded-3xl border ${b.bgColor || "bg-indigo-500/10"} ${b.borderColor || "border-indigo-500/20"} shadow-lg flex flex-col justify-between space-y-4`}
+                      className={`p-5 rounded-3xl border ${b.bgColor || "bg-indigo-500/10"} ${b.borderColor || "border-indigo-500/20"} shadow-lg flex flex-col justify-between space-y-4 ${b.status === "INACTIVE" ? "opacity-65" : ""}`}
                     >
                       <div className="space-y-3">
                         <div className="flex items-center justify-between">
@@ -2654,15 +2922,61 @@ export const AdminWorkspace: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="pt-3 border-t border-slate-800/80 space-y-2">
+                      <div className="pt-3 border-t border-slate-800/80 space-y-2.5">
                         <div className="text-[10px] text-slate-400 font-sans leading-relaxed bg-slate-950/60 p-2.5 rounded-xl border border-slate-850">
                           <strong className="text-indigo-300 block mb-0.5 font-mono text-[9px] uppercase tracking-wider">Persyaratan:</strong>
                           {b.requirement || "Melalui peninjauan pengelola NightVerse."}
                         </div>
                         <div className="flex items-center justify-between text-[9px] font-mono text-slate-500 pt-1">
-                          <span>Status: <strong className="text-emerald-400">{b.status}</strong></span>
+                          <span>Status: <strong className={b.status === "ACTIVE" ? "text-emerald-400" : "text-amber-400"}>{b.status}</strong></span>
                           <span>Dibuat: {new Date(b.createdAt).toLocaleDateString()}</span>
                         </div>
+
+                        {user?.role === "SUPER_ADMIN" && (
+                          <div className="flex items-center gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleBadgeStatus(b)}
+                              className={`flex-1 py-1.5 px-2.5 rounded-xl text-[10px] font-mono font-bold uppercase border transition-all cursor-pointer ${
+                                b.status === "ACTIVE"
+                                  ? "bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border-amber-500/30"
+                                  : "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
+                              }`}
+                            >
+                              {b.status === "ACTIVE" ? "Set Inactive" : "Set Active"}
+                            </button>
+
+                            {!isCoreBadge && (
+                              badgeToDeleteId === b.id ? (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteCustomBadge(b)}
+                                    className="py-1.5 px-2.5 rounded-xl text-[10px] font-mono font-bold uppercase bg-rose-600 hover:bg-rose-500 text-white cursor-pointer"
+                                  >
+                                    Hapus
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setBadgeToDeleteId(null)}
+                                    className="py-1.5 px-2 rounded-xl text-[10px] font-mono bg-slate-800 text-slate-300 cursor-pointer"
+                                  >
+                                    Batal
+                                  </button>
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setBadgeToDeleteId(b.id)}
+                                  className="py-1.5 px-2.5 rounded-xl text-[10px] font-mono font-bold uppercase bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 cursor-pointer"
+                                  title="Hapus Custom Badge"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -2747,8 +3061,12 @@ export const AdminWorkspace: React.FC = () => {
                             {award.reason || "-"}
                           </td>
                           <td className="py-3 px-3 text-right">
-                            <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full text-[9px] font-mono font-bold">
-                              SUCCESS
+                            <span className={`px-2 py-0.5 rounded-full text-[9px] font-mono font-bold border ${
+                              award.status === "REVOKED"
+                                ? "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                            }`}>
+                              {award.status || "SUCCESS"}
                             </span>
                           </td>
                         </tr>
@@ -3600,6 +3918,61 @@ export const AdminWorkspace: React.FC = () => {
                     </div>
                   </label>
                 </div>
+
+                {/* Global Floating Toast Notification ON/OFF Toggle */}
+                {(() => {
+                  const isToastEnabled = localSettings.enableFloatingToasts ?? true;
+                  return (
+                    <div className="pt-3 border-t border-slate-800/80">
+                      <div className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-4 ${
+                        isToastEnabled
+                          ? "bg-slate-900/70 border-emerald-500/30"
+                          : "bg-slate-900/40 border-slate-800"
+                      }`}>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+                            isToastEnabled
+                              ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30"
+                              : "bg-slate-800 text-slate-500 border border-slate-700"
+                          }`}>
+                            {isToastEnabled ? <BellRing className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="font-bold text-white block font-space text-xs">Floating Toast Notifications</span>
+                            <span className="text-[10px] text-slate-400 block font-sans mt-0.5">
+                              ON: Menampilkan popup notifikasi melayang di bagian bawah layar. OFF: Menonaktifkan popup notifikasi global.
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={`text-[10px] font-mono font-black uppercase ${
+                            isToastEnabled ? "text-emerald-400" : "text-slate-500"
+                          }`}>
+                            {isToastEnabled ? "ON" : "OFF"}
+                          </span>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={isToastEnabled}
+                            id="btn-toggle-floating-toasts"
+                            onClick={handleToggleFloatingToasts}
+                            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none active:scale-95 ${
+                              isToastEnabled ? "bg-emerald-500" : "bg-slate-800"
+                            }`}
+                            title={isToastEnabled ? "Matikan Floating Toast Notifications" : "Aktifkan Floating Toast Notifications"}
+                          >
+                            <span
+                              className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                                isToastEnabled ? "translate-x-5" : "translate-x-0"
+                              }`}
+                            />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {/* Explore Feed Items Per Page Setting */}
                 <div className="pt-3 border-t border-slate-800/80 space-y-2.5">

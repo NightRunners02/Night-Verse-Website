@@ -32,7 +32,7 @@ export interface UserBadgeAward {
   grantedByRole: Role;
   grantedAt: string;
   reason?: string;
-  status: "SUCCESS";
+  status: "SUCCESS" | "REVOKED";
 }
 
 export interface User {
@@ -44,6 +44,7 @@ export interface User {
   isSuspended: boolean;
   emailVerified: boolean;
   createdAt: string;
+  updatedAt?: string;
   profile?: {
     avatarUrl?: string;
     fullName?: string;
@@ -88,6 +89,9 @@ export interface User {
       system: boolean;
       admin: boolean;
     };
+    themePref?: string;
+    langPref?: string;
+    deletedTagsVault?: any[];
   };
 }
 
@@ -300,6 +304,7 @@ export interface SystemSettings {
   enableEmailVerification: boolean;
   enablePushNotifications: boolean;
   enableRealtimeStream: boolean;
+  enableFloatingToasts?: boolean;
   creatorMasterpiecesBlur: boolean;
   exploreItemsPerPage?: number;
   mediaApproval?: MediaApprovalSettings;

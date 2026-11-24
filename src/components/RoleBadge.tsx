@@ -1,6 +1,8 @@
 import React from "react";
 import { Role } from "../types.js";
-import { Shield, ShieldAlert, ShieldCheck, User, CheckCircle2, Star, Trophy, Crown } from "lucide-react";
+import { Shield, ShieldAlert, ShieldCheck, User, CheckCircle2, Trophy, Crown, Star } from "lucide-react";
+import { db } from "../lib/db.js";
+import { getBadgeIconComponent } from "../lib/badgeIcons.js";
 
 export type BadgeType = Role | "VERIFIED" | "CONTRIBUTOR" | "VIP" | "STAFF" | "Verified Creator" | "Administrator" | "Moderator" | "User";
 
@@ -23,6 +25,7 @@ export const RoleBadge: React.FC<RoleBadgeProps> = ({
 
   // Normalize role/badge name
   const b = role?.toString();
+  const customDef = b ? db.badges.getById(b) : undefined;
 
   if (b === "SUPER_ADMIN" || b === "Super Admin" || b === "STAFF") {
     badgeStyles = "bg-rose-500/10 border-rose-500/30 text-rose-400 shadow-[0_0_8px_rgba(244,63,94,0.1)]";
@@ -38,7 +41,7 @@ export const RoleBadge: React.FC<RoleBadgeProps> = ({
     Icon = Shield;
   } else if (b === "VERIFIED" || b === "Verified Creator" || b === "Verified") {
     badgeStyles = "bg-blue-500/10 border-blue-500/30 text-blue-400";
-    text = "Verified";
+    text = b === "Verified Creator" ? "Verified Creator" : "Verified";
     Icon = CheckCircle2;
   } else if (b === "CONTRIBUTOR" || b === "Contributor") {
     badgeStyles = "bg-emerald-500/10 border-emerald-500/30 text-emerald-400";
@@ -52,6 +55,10 @@ export const RoleBadge: React.FC<RoleBadgeProps> = ({
     badgeStyles = "bg-fuchsia-500/10 border-fuchsia-500/30 text-fuchsia-400 shadow-[0_0_8px_rgba(217,70,239,0.1)]";
     text = "Night Artist";
     Icon = Star;
+  } else if (customDef) {
+    badgeStyles = `${customDef.bgColor || "bg-indigo-500/10"} ${customDef.borderColor || "border-indigo-500/30"} ${customDef.color || "text-indigo-400"}`;
+    text = customDef.name;
+    Icon = getBadgeIconComponent(customDef.icon);
   } else {
     badgeStyles = "bg-slate-950/50 border-slate-800 text-slate-400";
     text = b === "USER" || b === "User" ? "User" : (b || "User");

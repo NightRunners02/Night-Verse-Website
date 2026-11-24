@@ -116,23 +116,33 @@ export async function supabaseUpsert<T extends Record<string, any>>(
   };
 
   const CHUNK_SIZE = 20;
+  let firstError: string | null = null;
+  let lastStatus = 200;
+
   for (let i = 0; i < rows.length; i += CHUNK_SIZE) {
     const chunk = rows.slice(i, i + CHUNK_SIZE);
     const result = await sendBatch(chunk);
     if (!result.ok) {
       if (result.missingTable) return result;
-      // Fallback row-by-row so one oversized/problematic payload doesn't drop other valid rows
       if (chunk.length > 1) {
         for (const row of chunk) {
           const single = await sendBatch([row]);
           if (!single.ok) {
+            lastStatus = single.status || 400;
+            if (!firstError) firstError = single.error || "Upsert failed";
             console.warn(`[Supabase] Upsert skipped row in ${table}:`, single.error);
           }
         }
       } else {
+        lastStatus = result.status || 400;
+        if (!firstError) firstError = result.error || "Upsert failed";
         console.warn(`[Supabase] Upsert warning for ${table}:`, result.error);
       }
     }
+  }
+
+  if (firstError) {
+    return { ok: false, status: lastStatus, data: null, error: firstError };
   }
 
   return { ok: true, status: 200, data: null };
@@ -160,7 +170,7 @@ export async function supabaseDeleteIds(
     );
     if (!res.ok) {
       const errText = await res.text().catch(() => "");
-      return { ok: false, status: res.status, data: null, error: errText };
+      return { ok: false, status: res.status, data: null, error: errText || `HTTP ${res.status}` };
     }
     return { ok: true, status: res.status, data: null };
   } catch (err: any) {
@@ -170,17 +180,146 @@ export async function supabaseDeleteIds(
 
 export async function supabaseDeleteFollows(
   pairs: Array<{ followerId: string; followingId: string }>
-): Promise<void> {
-  if (!isSupabaseConfigured() || pairs.length === 0) return;
-  await Promise.allSettled(
-    pairs.map((p) =>
-      fetch(
+): Promise<SupabaseResult<null>> {
+  if (!isSupabaseConfigured() || pairs.length === 0) {
+    return { ok: true, status: 200, data: null };
+  }
+  const results = await Promise.allSettled(
+    pairs.map(async (p) => {
+      const res = await fetch(
         `${SUPABASE_REST_URL}/follows?follower_id=eq.${encodeURIComponent(p.followerId)}&following_id=eq.${encodeURIComponent(p.followingId)}`,
         {
           method: "DELETE",
           headers: buildHeaders({ Prefer: "return=minimal" }),
         }
-      )
-    )
+      );
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        throw new Error(errText || `HTTP ${res.status}`);
+      }
+    })
   );
+  const rejected = results.find((r) => r.status === "rejected") as PromiseRejectedResult | undefined;
+  if (rejected) {
+    return { ok: false, status: 400, data: null, error: rejected.reason?.message || "Delete follow failed" };
+  }
+  return { ok: true, status: 200, data: null };
+}
+
+export function subscribeToSupabaseRealtime(
+  onChange: (table: string, eventType: string) => void
+): () => void {
+  if (typeof window === "undefined" || typeof WebSocket === "undefined" || !isSupabaseConfigured()) {
+    return () => {};
+  }
+
+  let closedByUser = false;
+  let ws: WebSocket | null = null;
+  let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let refCounter = 1;
+  let reconnectAttempts = 0;
+
+  const wsBase = SUPABASE_URL.replace(/^http/i, "ws");
+  const wsUrl = `${wsBase}/realtime/v1/websocket?apikey=${encodeURIComponent(SUPABASE_ANON_KEY)}&vsn=1.0.0`;
+
+  const clearTimers = () => {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = null;
+    }
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+  };
+
+  const connect = () => {
+    if (closedByUser) return;
+    try {
+      ws = new WebSocket(wsUrl);
+    } catch {
+      return;
+    }
+
+    ws.onopen = () => {
+      reconnectAttempts = 0;
+      const joinRef = String(refCounter++);
+      ws?.send(
+        JSON.stringify({
+          topic: "realtime:public",
+          event: "phx_join",
+          payload: {
+            config: {
+              broadcast: { self: false },
+              presence: { key: "" },
+              postgres_changes: [{ event: "*", schema: "public" }],
+            },
+            access_token: SUPABASE_ANON_KEY,
+          },
+          ref: joinRef,
+          join_ref: joinRef,
+        })
+      );
+
+      heartbeatTimer = setInterval(() => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(
+            JSON.stringify({
+              topic: "phoenix",
+              event: "heartbeat",
+              payload: {},
+              ref: String(refCounter++),
+            })
+          );
+        }
+      }, 25000);
+    };
+
+    ws.onmessage = (evt) => {
+      try {
+        const msg = JSON.parse(String(evt.data));
+        if (msg?.event === "postgres_changes") {
+          const data = msg?.payload?.data || msg?.payload;
+          const table = data?.table || msg?.payload?.table || "unknown";
+          const eventType = data?.type || data?.eventType || "UPDATE";
+          onChange(String(table), String(eventType));
+        }
+      } catch {
+        // Ignore non-JSON frames
+      }
+    };
+
+    ws.onclose = () => {
+      clearTimers();
+      if (!closedByUser) {
+        const delay = Math.min(30000, 2000 * Math.pow(1.5, reconnectAttempts));
+        reconnectAttempts += 1;
+        reconnectTimer = setTimeout(connect, delay);
+      }
+    };
+
+    ws.onerror = () => {
+      try {
+        ws?.close();
+      } catch {
+        // Ignore close error
+      }
+    };
+  };
+
+  connect();
+
+  return () => {
+    closedByUser = true;
+    clearTimers();
+    if (ws) {
+      try {
+        ws.close();
+      } catch {
+        // Ignore close error
+      }
+      ws = null;
+    }
+  };
 }
