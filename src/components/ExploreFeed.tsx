@@ -127,12 +127,26 @@ const ExploreCard: React.FC<ExploreCardProps> = ({ item, onSelect, onAdminDelete
           />
         )}
         {item.itemType === "video" && (
-          <div className="relative w-full h-full">
-            <img 
-              src={item.thumbnailUrl || undefined} 
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-85" 
-              alt={item.title} 
-            />
+          <div className="relative w-full h-full bg-slate-950">
+            {item.thumbnailUrl ? (
+              <img 
+                src={item.thumbnailUrl} 
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-85" 
+                alt={item.title} 
+              />
+            ) : item.sourceType !== "EMBED" && item.url ? (
+              <video 
+                src={item.url}
+                muted
+                playsInline
+                preload="metadata"
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-85"
+              />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-br from-slate-900 via-purple-950/30 to-slate-950 flex items-center justify-center">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-purple-300/60">Video Stream</span>
+              </div>
+            )}
             <div className="absolute inset-0 flex items-center justify-center bg-black/20">
               <span className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-purple-650 text-white flex items-center justify-center font-mono shadow-md group-hover:scale-110 transition-all duration-300 text-[10px] md:text-xs">▶</span>
             </div>

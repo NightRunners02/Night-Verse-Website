@@ -45,6 +45,7 @@ const set = <T>(key: string, data: T): void => {
 const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   websiteName: "NightVerse",
   logoText: "NIGHTVERSE",
+  logoUrl: undefined,
   faviconEmoji: "🌌",
   faviconUrl: "/favicon.svg",
   faviconUpdatedAt: 0,
@@ -374,20 +375,18 @@ export const initDB = async (): Promise<void> => {
   } else {
     let modified = false;
     const updated = currentVideos.map(v => {
-      const hasMockUrls = v.renditions?.every(r => r.url === v.url);
-      const isMissingFullRenditions = !v.renditions || v.renditions.length < 6;
-      const isSeed = v.id === "seed-video-cyberpunk";
-      const isMissingUrl = !v.url || typeof v.url !== "string" || !v.url.trim();
-      const hasCorruptRendition = v.renditions?.some(r => !r.url || r.fileSize === 48);
-      if (hasMockUrls || isMissingFullRenditions || isMissingUrl || hasCorruptRendition) {
-        modified = true;
-        return {
-          ...v,
-          url: (isSeed || isMissingUrl || !v.url?.includes(".mp4")) ? DEFAULT_FEATURED_VIDEOS[0].url : v.url,
-          codec: "h264 (H.264 / AVC High Profile)",
-          processingStatus: "COMPLETED",
-          renditions: DEFAULT_FEATURED_VIDEOS[0].renditions
-        };
+      if (v.id === "seed-video-cyberpunk") {
+        const isSeedBroken = !v.renditions || v.renditions.length < 6 || !v.url?.includes(".mp4");
+        if (isSeedBroken) {
+          modified = true;
+          return {
+            ...v,
+            url: DEFAULT_FEATURED_VIDEOS[0].url,
+            codec: "h264 (H.264 / AVC High Profile)",
+            processingStatus: "COMPLETED",
+            renditions: DEFAULT_FEATURED_VIDEOS[0].renditions
+          };
+        }
       }
       return v;
     });
@@ -707,8 +706,8 @@ export const db = {
         const settings = db.settings.get();
         const isAuto = settings.mediaApproval?.blog ?? true;
         const authorUser = db.users.getById(blog.userId);
-        const isSuperAdmin = authorUser?.role === "SUPER_ADMIN";
-        if (!isSuperAdmin) {
+        const isAdminOrSuper = authorUser?.role === "SUPER_ADMIN" || authorUser?.role === "ADMIN";
+        if (!isAdminOrSuper) {
           blog.status = isAuto ? "APPROVED" : "PENDING";
         } else {
           blog.status = "APPROVED";
@@ -777,8 +776,8 @@ export const db = {
         const settings = db.settings.get();
         const isAuto = settings.mediaApproval?.photo ?? true;
         const authorUser = db.users.getById(photo.userId);
-        const isSuperAdmin = authorUser?.role === "SUPER_ADMIN";
-        if (!isSuperAdmin) {
+        const isAdminOrSuper = authorUser?.role === "SUPER_ADMIN" || authorUser?.role === "ADMIN";
+        if (!isAdminOrSuper) {
           photo.status = isAuto ? "APPROVED" : "PENDING";
         } else {
           photo.status = "APPROVED";
@@ -847,31 +846,48 @@ export const db = {
         const settings = db.settings.get();
         const isAuto = settings.mediaApproval?.video ?? false;
         const authorUser = db.users.getById(video.userId);
-        const isSuperAdmin = authorUser?.role === "SUPER_ADMIN";
-        if (!isSuperAdmin) {
+        const isAdminOrSuper = authorUser?.role === "SUPER_ADMIN" || authorUser?.role === "ADMIN";
+        if (!isAdminOrSuper) {
           video.status = isAuto ? "APPROVED" : "PENDING";
         } else {
           video.status = "APPROVED";
         }
       }
 
-      // Ensure renditions is always populated with authentic multi-renditions
-      if (!video.renditions || video.renditions.length === 0) {
-        video.renditions = DEFAULT_FEATURED_VIDEOS[0].renditions;
+      const isNativeUpload = video.sourceType === "LAPTOP" || video.sourceType === "MOBILE" || video.sourceType === "UPLOAD";
+      const parsedRes = (video.resolution || "1920x1080").split("x");
+      const resW = parseInt(parsedRes[0], 10) || 1920;
+      const resH = parseInt(parsedRes[1], 10) || 1080;
+
+      // Preserve authentic user video URL in renditions (never overwrite with sample demo video)
+      if ((!video.renditions || video.renditions.length === 0) && video.url && video.sourceType !== "EMBED") {
+        video.renditions = [
+          {
+            id: "r-original",
+            resolution: "Original",
+            width: resW,
+            height: resH,
+            codec: video.codec || "h264 (H.264 / AVC)",
+            bitrate: 4500000,
+            frameRate: video.frameRate || 30,
+            url: video.url,
+            fileSize: video.fileSize || 0,
+          },
+        ];
       }
 
-      // Initialize processing status if native
-      if (video.sourceType === "LAPTOP" || video.sourceType === "MOBILE" || video.sourceType === "UPLOAD") {
-        video.processingStatus = "PROCESSING";
-      } else {
-        video.processingStatus = "COMPLETED";
-      }
+      const canAttemptServerTranscode =
+        isNativeUpload &&
+        Boolean(video.url) &&
+        (video.url.startsWith("/uploads/") || (video.url.startsWith("data:video/") && video.url.length < 15 * 1024 * 1024));
+
+      video.processingStatus = canAttemptServerTranscode ? "PROCESSING" : "COMPLETED";
 
       const data = get<Video[]>(KEYS.VIDEOS, []);
       set(KEYS.VIDEOS, [video, ...data]);
-      
-      // Multi-Rendition Transcoding for Native Files
-      if (video.processingStatus === "PROCESSING") {
+
+      // Optional server transcoding for local/small uploads; preserves user's real video on fallback
+      if (canAttemptServerTranscode) {
         const transcodeAsync = async () => {
           try {
             const res = await fetch("/api/videos/transcode", {
@@ -881,45 +897,62 @@ export const db = {
                 videoId: video.id,
                 videoBase64: video.url?.startsWith("data:") ? video.url : undefined,
                 originalUrl: !video.url?.startsWith("data:") ? video.url : undefined,
+                width: resW,
+                height: resH,
+                fileSize: video.fileSize || 0,
               }),
             });
-            const resData = await res.json();
-            if (resData.success && resData.renditions?.length > 0) {
-              const videos = get<Video[]>(KEYS.VIDEOS, []);
-              const idx = videos.findIndex(v => v.id === video.id);
-              if (idx !== -1) {
-                videos[idx] = {
-                  ...videos[idx],
-                  renditions: resData.renditions,
-                  processingStatus: "COMPLETED",
-                  codec: "h264 (H.264 / AVC High Profile)",
-                };
-                set(KEYS.VIDEOS, videos);
-                window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.VIDEOS, data: videos } }));
-                return;
+            if (res.ok) {
+              const resData = await res.json();
+              if (resData.success && Array.isArray(resData.renditions) && resData.renditions.length > 0) {
+                const videos = get<Video[]>(KEYS.VIDEOS, []);
+                const idx = videos.findIndex(v => v.id === video.id);
+                if (idx !== -1) {
+                  videos[idx] = {
+                    ...videos[idx],
+                    url: resData.playableUrl && videos[idx].url?.startsWith("data:") ? resData.playableUrl : videos[idx].url,
+                    renditions: resData.renditions,
+                    processingStatus: "COMPLETED",
+                    codec: "h264 (H.264 / AVC High Profile)",
+                  };
+                  set(KEYS.VIDEOS, videos);
+                  window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.VIDEOS, data: videos } }));
+                  return;
+                }
               }
             }
           } catch (e) {
-            console.warn("Transcoding API fallback to authentic renditions:", e);
+            console.warn("Transcoding API unavailable, preserving authentic source stream:", e);
           }
 
-          // Fallback to distinct authentic renditions
+          // Safe fallback: preserve the user's actual video URL and mark COMPLETED
           const videos = get<Video[]>(KEYS.VIDEOS, []);
           const idx = videos.findIndex(v => v.id === video.id);
           if (idx !== -1) {
             const v = videos[idx];
-            videos[idx] = { 
-              ...v, 
-              renditions: DEFAULT_FEATURED_VIDEOS[0].renditions, 
-              processingStatus: "COMPLETED", 
-              codec: "h264 (H.264 / AVC High Profile)" 
+            videos[idx] = {
+              ...v,
+              renditions: (v.renditions && v.renditions.length > 0) ? v.renditions : [
+                {
+                  id: "r-original",
+                  resolution: "Original",
+                  width: resW,
+                  height: resH,
+                  codec: v.codec || "h264 (H.264 / AVC)",
+                  bitrate: 4500000,
+                  frameRate: v.frameRate || 30,
+                  url: v.url,
+                  fileSize: v.fileSize || 0,
+                },
+              ],
+              processingStatus: "COMPLETED",
             };
             set(KEYS.VIDEOS, videos);
             window.dispatchEvent(new CustomEvent("nightverse_db_updated", { detail: { key: KEYS.VIDEOS, data: videos } }));
           }
         };
 
-        setTimeout(transcodeAsync, 1000);
+        setTimeout(transcodeAsync, 300);
       }
 
       if (video.status === "APPROVED") {
@@ -1667,18 +1700,23 @@ export const db = {
         video: stored?.mediaApproval?.video ?? false,
         blog: stored?.mediaApproval?.blog ?? true,
       };
+      const logoUrl = typeof stored?.logoUrl === "string" && stored.logoUrl.trim() ? stored.logoUrl.trim() : undefined;
       const faviconUrl = stored?.faviconUrl || "/favicon.svg";
       const faviconUpdatedAt = stored?.faviconUpdatedAt ?? 0;
       const enableFloatingToasts = stored?.enableFloatingToasts ?? true;
       const creatorMasterpiecesBlur = stored?.creatorMasterpiecesBlur ?? false;
       const exploreItemsPerPage = stored?.exploreItemsPerPage ?? 12;
-      return { ...DEFAULT_SYSTEM_SETTINGS, ...stored, mediaApproval, faviconUrl, faviconUpdatedAt, enableFloatingToasts, creatorMasterpiecesBlur, exploreItemsPerPage };
+      return { ...DEFAULT_SYSTEM_SETTINGS, ...stored, logoUrl, mediaApproval, faviconUrl, faviconUpdatedAt, enableFloatingToasts, creatorMasterpiecesBlur, exploreItemsPerPage };
     },
     save: (updates: Partial<SystemSettings>) => {
       const current = db.settings.get();
+      const nextLogoUrl = Object.prototype.hasOwnProperty.call(updates, "logoUrl")
+        ? (typeof updates.logoUrl === "string" && updates.logoUrl.trim() ? updates.logoUrl.trim() : undefined)
+        : current.logoUrl;
       const nextSettings: SystemSettings = { 
         ...current, 
         ...updates,
+        logoUrl: nextLogoUrl,
         mediaApproval: updates.mediaApproval 
           ? { ...current.mediaApproval, ...updates.mediaApproval }
           : current.mediaApproval

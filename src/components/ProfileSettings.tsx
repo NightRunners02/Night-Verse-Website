@@ -2476,10 +2476,16 @@ interface AboutAppPanelProps {
 const AboutAppPanel: React.FC<AboutAppPanelProps> = ({ onOpenDocs }) => {
   const { systemSettings } = useAppState();
   const [openModal, setOpenModal] = useState<"tos" | "privacy" | null>(null);
+  const [logoLoadError, setLogoLoadError] = useState(false);
 
   const appTitle = systemSettings?.websiteName || systemSettings?.logoText || "NightVerse Platform";
   const logoUrl = systemSettings?.logoUrl;
   const logoTextAccent = systemSettings?.logoText?.substring(0, 2) || "NV";
+
+  useEffect(() => {
+    setLogoLoadError(false);
+  }, [logoUrl]);
+
   const latestRelease = DEFAULT_CHANGELOGS[0] || {
     versionNumber: "v2.7.0",
     releaseTitle: "Support Ticket System & High-Fidelity Video Engine",
@@ -2493,9 +2499,10 @@ const AboutAppPanel: React.FC<AboutAppPanelProps> = ({ onOpenDocs }) => {
       <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-8 shadow-xl relative overflow-hidden text-center sm:text-left flex flex-col sm:flex-row items-center gap-6">
         <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-purple-600 to-indigo-500 p-0.5 shadow-2xl shrink-0">
           <div className="w-full h-full bg-slate-950 rounded-[22px] flex items-center justify-center overflow-hidden p-1.5">
-            {logoUrl ? (
+            {logoUrl && !logoLoadError ? (
               <img
                 src={logoUrl}
+                onError={() => setLogoLoadError(true)}
                 alt={appTitle}
                 className="w-full h-full object-contain rounded-[18px]"
               />

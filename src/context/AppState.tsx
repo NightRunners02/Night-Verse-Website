@@ -3,9 +3,10 @@ import {
   User, Blog, Photo, Video, Tag, Notification, Comment, SystemSettings, ToastAlert, Role, ContentStatus, SourceType 
 } from "../types.js";
 import { db, initDB, refreshDB } from "../lib/db.js";
-import { subscribeToSupabaseRealtime } from "../lib/supabase.js";
+import { subscribeToSupabaseRealtime, isSupabaseConfigured } from "../lib/supabase.js";
 import { STORAGE_KEYS } from "../lib/supabaseSync.js";
 import { updateBrowserFavicon, validateFaviconFile, DEFAULT_FAVICON_URL } from "../lib/favicon.js";
+import { validateLogoFile, validateLogoUrl, prepareLogoUploadDataUrl, MAX_INLINE_LOGO_DATA_URI_CHARS } from "../lib/logo.js";
 
 // Initialize local database handled inside AppStateProvider
 // initDB(); 
@@ -63,6 +64,8 @@ interface AppContextType {
   saveSystemSettings: (settings: Partial<SystemSettings>) => Promise<boolean>;
   uploadFavicon: (file: File) => Promise<{ success: boolean; error?: string }>;
   resetFavicon: () => Promise<boolean>;
+  uploadLogo: (file: File) => Promise<{ success: boolean; logoUrl?: string; error?: string }>;
+  resetLogo: () => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -152,6 +155,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
                 setSystemSettings(updated);
                 updateBrowserFavicon(updated.faviconUrl, updated.faviconUpdatedAt);
               }
+              db.syncNow([STORAGE_KEYS.SYSTEM_SETTINGS]).catch(() => undefined);
             }
           }
         } catch {
@@ -586,12 +590,26 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       return false;
     }
 
-    db.settings.save(settings);
+    const sanitizedSettings: Partial<SystemSettings> = { ...settings };
+    if (Object.prototype.hasOwnProperty.call(settings, "logoUrl")) {
+      const logoCheck = validateLogoUrl(settings.logoUrl);
+      if (!logoCheck.isValid) {
+        triggerToast("URL Logo Tidak Valid", logoCheck.error || "URL logo tidak didukung.", "error");
+        return false;
+      }
+      sanitizedSettings.logoUrl = logoCheck.normalized;
+    }
+
+    db.settings.save(sanitizedSettings);
     const updated = db.settings.get();
     setSystemSettings(updated);
     if (updated.enableFloatingToasts === false) {
       setToastAlerts([]);
     }
+
+    // Flush settings to Supabase SQL immediately and check result
+    const syncRes = await db.syncNow([STORAGE_KEYS.SYSTEM_SETTINGS]);
+    triggerDBSync();
 
     // Synchronize to backend Express server if reachable
     try {
@@ -606,11 +624,112 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         });
       }
     } catch {
-      // Local IDB/localStorage persistence in db.settings.save is primary
+      // Local cache + Supabase sync in db.settings.save is primary
+    }
+
+    if (!syncRes.ok && isSupabaseConfigured()) {
+      triggerToast("Tersimpan Lokal (Sync Peringatan)", syncRes.error || "Gagal menyinkronkan ke database Supabase.", "error");
+      return false;
     }
 
     triggerToast("Settings Applied Permanently", "Config registry updated in database.", "success");
     return true;
+  };
+
+  const uploadLogo = async (file: File): Promise<{ success: boolean; logoUrl?: string; error?: string }> => {
+    if (!user || (user.role !== "SUPER_ADMIN" && user.role !== "ADMIN")) {
+      const msg = "Hanya Administrator atau Super Admin yang dapat mengubah Application Logo.";
+      triggerToast("Akses Ditolak 🔒", msg, "error");
+      return { success: false, error: msg };
+    }
+
+    const validation = validateLogoFile(file);
+    if (!validation.isValid || !validation.extension) {
+      const msg = validation.error || "File logo tidak valid.";
+      triggerToast("Format Logo Tidak Valid", msg, "error");
+      return { success: false, error: msg };
+    }
+
+    try {
+      const prepared = await prepareLogoUploadDataUrl(file, validation.extension);
+      let finalLogoUrl = prepared.dataUrl;
+
+      // Compact logos (<= ~250KB) store cleanly as optimized data URIs so they sync across Supabase & all URLs;
+      // larger animated GIFs upload via backend /api/settings/logo storage.
+      if (prepared.dataUrl.length > MAX_INLINE_LOGO_DATA_URI_CHARS) {
+        const res = await fetch("/api/settings/logo", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userRole: user.role,
+            fileBase64: prepared.dataUrl,
+            fileName: file.name,
+            mimeType: prepared.mimeType,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || "Gagal mengunggah logo ke server storage.");
+        }
+        finalLogoUrl = data.logoUrl;
+      }
+
+      db.settings.save({ logoUrl: finalLogoUrl });
+      const updated = db.settings.get();
+      setSystemSettings(updated);
+
+      const syncRes = await db.syncNow([STORAGE_KEYS.SYSTEM_SETTINGS]);
+      triggerDBSync();
+
+      if (!syncRes.ok && isSupabaseConfigured()) {
+        triggerToast("Logo Terpasang (Sync Peringatan)", syncRes.error || "Gagal menyinkronkan logo ke Supabase.", "error");
+        return { success: false, logoUrl: finalLogoUrl, error: syncRes.error };
+      }
+
+      triggerToast("Application Logo Diperbarui ✨", "Logo aplikasi berhasil diunggah dan disinkronkan ke seluruh halaman.", "success");
+      return { success: true, logoUrl: finalLogoUrl };
+    } catch (err: any) {
+      const msg = err?.message || "Terjadi kesalahan saat mengunggah logo.";
+      triggerToast("Gagal Mengunggah Logo", msg, "error");
+      return { success: false, error: msg };
+    }
+  };
+
+  const resetLogo = async (): Promise<boolean> => {
+    if (!user || (user.role !== "SUPER_ADMIN" && user.role !== "ADMIN")) {
+      triggerToast("Akses Ditolak 🔒", "Hanya Administrator atau Super Admin yang dapat mereset Application Logo.", "error");
+      return false;
+    }
+
+    try {
+      try {
+        await fetch("/api/settings/logo/reset", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userRole: user.role }),
+        });
+      } catch {
+        // Non-blocking if backend disk file was absent
+      }
+
+      db.settings.save({ logoUrl: undefined });
+      const updated = db.settings.get();
+      setSystemSettings(updated);
+
+      const syncRes = await db.syncNow([STORAGE_KEYS.SYSTEM_SETTINGS]);
+      triggerDBSync();
+
+      if (!syncRes.ok && isSupabaseConfigured()) {
+        triggerToast("Reset Lokal (Sync Peringatan)", syncRes.error || "Gagal menyinkronkan reset logo ke Supabase.", "error");
+        return false;
+      }
+
+      triggerToast("Application Logo Direset ✨", "Logo aplikasi dikembalikan ke monogram teks default.", "success");
+      return true;
+    } catch (err: any) {
+      triggerToast("Gagal Mereset Logo", err?.message || "Terjadi kesalahan saat mereset logo.", "error");
+      return false;
+    }
   };
 
   const uploadFavicon = async (file: File): Promise<{ success: boolean; error?: string }> => {
@@ -664,7 +783,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         updatedAt = Date.now();
       }
 
-      // Persist into database system settings
+      // Persist into database system settings & flush immediately to Supabase
       db.settings.save({
         faviconUrl: newFaviconUrl,
         faviconUpdatedAt: updatedAt,
@@ -673,8 +792,12 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const updated = db.settings.get();
       setSystemSettings(updated);
 
-      // Apply directly to browser tab
+      // Apply directly to browser tab and flush to Supabase
       updateBrowserFavicon(newFaviconUrl, updatedAt);
+      const syncResult = await db.syncNow([STORAGE_KEYS.SYSTEM_SETTINGS]);
+      if (!syncResult.ok) {
+        console.warn("[NightVerse Favicon] Supabase sync warning:", syncResult.error);
+      }
       triggerDBSync();
 
       triggerToast("Favicon Diperbarui ✨", "Ikon website berhasil disimpan dan diterapkan pada seluruh halaman.", "success");
@@ -714,6 +837,7 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       const updated = db.settings.get();
       setSystemSettings(updated);
       updateBrowserFavicon(defaultUrl, updatedAt);
+      await db.syncNow([STORAGE_KEYS.SYSTEM_SETTINGS]);
       triggerDBSync();
 
       triggerToast("Favicon Direset 🌌", "Ikon website berhasil dikembalikan ke default NightVerse.", "success");
@@ -769,7 +893,9 @@ export const AppStateProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         systemSettings,
         saveSystemSettings,
         uploadFavicon,
-        resetFavicon
+        resetFavicon,
+        uploadLogo,
+        resetLogo
       }}
     >
       {children}

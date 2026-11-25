@@ -1109,7 +1109,7 @@ export const ContentLightbox: React.FC = () => {
       if (item?.renditions && item.renditions.length > 0) {
         return item.renditions.some((r: any) => r.resolution === q.label);
       }
-      return true;
+      return false;
     });
   }, [allQualities, maxSourceH, item?.renditions]);
 
@@ -1119,17 +1119,17 @@ export const ContentLightbox: React.FC = () => {
     let targetRendition: any | undefined;
     let targetUrl = item.url;
 
-    const availableRends = (item?.renditions && item.renditions.length > 0)
+    const availableRends = (item?.renditions && Array.isArray(item.renditions) && item.renditions.length > 0)
       ? item.renditions
-      : (DEFAULT_FEATURED_VIDEOS[0]?.renditions || []);
+      : [];
 
     if (label === "Auto" || label === "Original") {
       if (availableRends.length > 0) {
         const sorted = [...availableRends].sort((a, b) => (b.height || 0) - (a.height || 0));
         targetRendition = sorted[0];
-        targetUrl = targetRendition.url;
+        targetUrl = targetRendition.url || item.url;
       } else {
-        targetUrl = item.url || "/renditions/cyberpunk-city/1080p.mp4";
+        targetUrl = item.url || "";
       }
     } else {
       targetRendition = availableRends.find((r: any) => r.resolution === label);
@@ -1137,7 +1137,12 @@ export const ContentLightbox: React.FC = () => {
         triggerToast("Kualitas Belum Tersedia", `File rendition ${label} belum tersedia untuk video ini.`, "error");
         return;
       }
-      targetUrl = targetRendition.url;
+      targetUrl = targetRendition.url || item.url;
+    }
+
+    if (!targetUrl) {
+      triggerToast("Sumber Video Tidak Ditemukan", "URL stream untuk video ini tidak tersedia.", "error");
+      return;
     }
 
     // Save exact playback state before source transition
@@ -1339,7 +1344,7 @@ export const ContentLightbox: React.FC = () => {
   };
 
   const renderMobileActionButtons = () => {
-    const isOwnerOrAdmin = isOwner || isAdmin;
+    const isOwnerOrAdmin = isOwner || isAdmin || user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
     const handleEditClick = () => {
       setFocusedContent(null);
       if (editUserContent) {
@@ -1563,7 +1568,8 @@ export const ContentLightbox: React.FC = () => {
 
             <video 
               ref={videoRef}
-              src={currentVideoUrl || currentUrl || "/renditions/cyberpunk-city/1080p.mp4"} 
+              src={(currentVideoUrl || currentUrl) || undefined} 
+              poster={item.thumbnailUrl || undefined}
               autoPlay={false} 
               loop={!isMobile}
               onTimeUpdate={handleTimeUpdate}
@@ -1577,10 +1583,8 @@ export const ContentLightbox: React.FC = () => {
                 e.stopPropagation();
                 const mediaErr = videoRef.current?.error;
                 console.warn("Video playback error handled gracefully:", mediaErr || e);
-                if (mediaErr && mediaErr.code === 4 && !isSwitchingQuality) {
-                  if (currentVideoUrl !== "/renditions/cyberpunk-city/1080p.mp4") {
-                    setCurrentVideoUrl("/renditions/cyberpunk-city/1080p.mp4");
-                  }
+                if (mediaErr && mediaErr.code === 4 && !isSwitchingQuality && item.url && currentVideoUrl !== item.url) {
+                  setCurrentVideoUrl(item.url);
                 }
               }}
               className="w-full h-full object-contain cursor-pointer"

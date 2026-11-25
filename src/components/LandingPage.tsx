@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useAppState } from "../context/AppState.js";
 import { db } from "../lib/db.js";
+import { updateBrowserFavicon } from "../lib/favicon.js";
 
 const getAspectRatioClass = (ratio?: string) => {
   switch (ratio) {
@@ -85,12 +86,26 @@ const TrendingCard: React.FC<TrendingCardProps> = ({ item, onSelect }) => {
           />
         )}
         {item.itemType === "video" && (
-          <div className="relative w-full h-full">
-            <img 
-              src={item.thumbnailUrl || undefined} 
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-90 dark:opacity-85" 
-              alt={item.title} 
-            />
+          <div className="relative w-full h-full bg-slate-950">
+            {item.thumbnailUrl ? (
+              <img 
+                src={item.thumbnailUrl} 
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-90 dark:opacity-85" 
+                alt={item.title} 
+              />
+            ) : item.sourceType !== "EMBED" && item.url ? (
+              <video 
+                src={item.url}
+                muted
+                playsInline
+                preload="metadata"
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 opacity-90 dark:opacity-85"
+              />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-br from-slate-900 via-purple-950/30 to-slate-950 flex items-center justify-center">
+                <span className="text-[10px] font-mono uppercase tracking-widest text-purple-300/60">Video Stream</span>
+              </div>
+            )}
             <div className="absolute inset-0 flex items-center justify-center bg-black/20">
               <span className="w-8 h-8 md:w-10 md:h-10 rounded-full bg-purple-650 text-white flex items-center justify-center font-mono shadow-md group-hover:scale-110 transition-all duration-300 text-[10px] md:text-xs">▶</span>
             </div>
@@ -198,14 +213,13 @@ export const LandingPage: React.FC = () => {
   const [photos, setPhotos] = useState<any[]>([]);
   const [videos, setVideos] = useState<any[]>([]);
   const [activeTrendingTab, setActiveTrendingTab] = useState<"photos" | "videos" | "blogs">("photos");
+  const [logoLoadError, setLogoLoadError] = useState(false);
 
   useEffect(() => {
+    setLogoLoadError(false);
     if (systemSettings) {
       document.title = `${systemSettings.websiteName} | Creators Hub`;
-      const link: any = document.querySelector("link[rel~='icon']");
-      if (link && systemSettings.faviconEmoji) {
-        link.href = `data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>${systemSettings.faviconEmoji}</text></svg>`;
-      }
+      updateBrowserFavicon(systemSettings.faviconUrl, systemSettings.faviconUpdatedAt);
     }
   }, [systemSettings]);
 
@@ -351,8 +365,13 @@ export const LandingPage: React.FC = () => {
           
           {/* Logo element */}
           <div className="flex items-center gap-1.5 md:gap-2 cursor-pointer flex-shrink-0" onClick={() => navigateTo("landing")}>
-            {systemSettings?.logoUrl ? (
-              <img src={systemSettings.logoUrl || undefined} className="w-7 h-7 md:w-9 md:h-9 rounded-xl object-cover shadow-lg shadow-purple-500/20" alt="app logo" />
+            {systemSettings?.logoUrl && !logoLoadError ? (
+              <img
+                src={systemSettings.logoUrl}
+                onError={() => setLogoLoadError(true)}
+                className="w-7 h-7 md:w-9 md:h-9 rounded-xl object-contain bg-slate-950 p-0.5 border border-slate-800/80 shadow-lg shadow-purple-500/20"
+                alt="app logo"
+              />
             ) : (
               <div className="w-7 h-7 md:w-9 md:h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-500 p-[1px] shadow-lg shadow-purple-500/20">
                 <div className="w-full h-full bg-slate-950 rounded-[11px] flex items-center justify-center font-space font-bold text-[10px] md:text-sm">

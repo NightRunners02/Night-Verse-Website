@@ -840,15 +840,30 @@ export const FullProfileView: React.FC<FullProfileViewProps> = ({
                       className="bg-slate-950/80 border border-slate-800/80 hover:border-cyan-500/50 rounded-2xl overflow-hidden transition-all group"
                     >
                       <div className="h-36 bg-slate-900 overflow-hidden relative">
-                        <img
-                          src={v.thumbnailUrl || "https://images.unsplash.com/photo-1518770660439-4636190af475?w=500&auto=format&fit=crop&q=80"}
-                          alt={v.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                          style={{ filter: isMasterpiecesBlur ? "blur(12px)" : "none" }}
-                        />
+                        {v.thumbnailUrl ? (
+                          <img
+                            src={v.thumbnailUrl}
+                            alt={v.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            style={{ filter: isMasterpiecesBlur ? "blur(12px)" : "none" }}
+                          />
+                        ) : v.sourceType !== "EMBED" && v.url ? (
+                          <video
+                            src={v.url}
+                            muted
+                            playsInline
+                            preload="metadata"
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                            style={{ filter: isMasterpiecesBlur ? "blur(12px)" : "none" }}
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-gradient-to-br from-slate-900 via-purple-950/30 to-slate-950 flex items-center justify-center">
+                            <VideoIcon className="w-8 h-8 text-cyan-400/50" />
+                          </div>
+                        )}
                         <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 to-transparent flex items-end p-2.5">
                           <span className="text-[10px] font-mono text-cyan-300 font-bold">
-                            Duration: {v.duration || "0:30"}
+                            Duration: {v.duration ? `${v.duration}s` : "Stream"}
                           </span>
                         </div>
                       </div>

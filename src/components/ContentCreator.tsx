@@ -12,6 +12,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { useAppState } from "../context/AppState.js";
 import { DeleteConfirmationModal } from "./DeleteConfirmationModal.js";
 import { db } from "../lib/db.js";
+import { STORAGE_KEYS } from "../lib/supabaseSync.js";
 
 // Defined sources categories
 const sourcesCategories = [
@@ -176,7 +177,33 @@ export const ContentCreator: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [uploadedFileName, setUploadedFileName] = useState("");
   const [uploadedFileSize, setUploadedFileSize] = useState("");
+  const [uploadedFileSizeBytes, setUploadedFileSizeBytes] = useState(0);
   const [blogCoverSource, setBlogCoverSource] = useState<"UPLOAD" | "URL">("UPLOAD");
+  const previewObjectUrlRef = React.useRef<string | null>(null);
+  const activeUploadXhrRef = React.useRef<XMLHttpRequest | null>(null);
+
+  const revokePreviewObjectUrl = () => {
+    if (previewObjectUrlRef.current) {
+      try {
+        URL.revokeObjectURL(previewObjectUrlRef.current);
+      } catch {
+        // Ignore revoke error
+      }
+      previewObjectUrlRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (activeUploadXhrRef.current) {
+        try {
+          activeUploadXhrRef.current.abort();
+        } catch {}
+        activeUploadXhrRef.current = null;
+      }
+      revokePreviewObjectUrl();
+    };
+  }, []);
 
   // Search filtering state
   const [tagSearch, setTagSearch] = useState("");
@@ -232,18 +259,16 @@ export const ContentCreator: React.FC = () => {
   };
 
   useEffect(() => {
-    if (uploads.length > 0) {
-      const s = {
-        totalBlogs: uploads.filter(i => i.type === 'blog').length,
-        totalPhotos: uploads.filter(i => i.type === 'photo').length,
-        totalVideos: uploads.filter(i => i.type === 'video').length,
-        totalViews: uploads.reduce((acc, i) => acc + (i.views || 0), 0),
-        totalLikes: uploads.reduce((acc, i) => acc + (i.likesCount || 0), 0),
-        totalComments: uploads.reduce((acc, i) => acc + (i.comments?.length || 0), 0),
-        totalTags: new Set(uploads.flatMap(i => i.tags || [])).size
-      };
-      setStats(s);
-    }
+    const s = {
+      totalBlogs: uploads.filter(i => i.type === 'blog').length,
+      totalPhotos: uploads.filter(i => i.type === 'photo').length,
+      totalVideos: uploads.filter(i => i.type === 'video').length,
+      totalViews: uploads.reduce((acc, i) => acc + (i.views || 0), 0),
+      totalLikes: uploads.reduce((acc, i) => acc + (i.likesCount || 0), 0),
+      totalComments: uploads.reduce((acc, i) => acc + (i.comments?.length || 0), 0),
+      totalTags: new Set(uploads.flatMap(i => i.tags || [])).size
+    };
+    setStats(s);
   }, [uploads]);
 
   const loadDashboardData = () => {
@@ -339,21 +364,6 @@ export const ContentCreator: React.FC = () => {
     triggerToast("System Update", "All tags have been removed successfully.", "success");
   };
 
-  const simulateProgress = () => {
-    setIsUploading(true);
-    setUploadProgress(0);
-    const interval = setInterval(() => {
-      setUploadProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setIsUploading(false);
-          return 100;
-        }
-        return prev + 10;
-      });
-    }, 200);
-  };
-
   const compressImage = (base64: string, maxWidth: number = 1000): Promise<string> => {
     return new Promise((resolve) => {
       // Do NOT compress animated GIFs via canvas as canvas flattens GIF to a single static JPEG frame
@@ -385,50 +395,230 @@ export const ContentCreator: React.FC = () => {
     });
   };
 
+  const extractVideoMetadataAndThumbnail = (sourceUrl: string, shouldAutoCaptureThumb: boolean) => {
+    const probe = document.createElement("video");
+    probe.preload = "metadata";
+    probe.muted = true;
+    probe.playsInline = true;
+    probe.src = sourceUrl;
+
+    probe.onloadedmetadata = () => {
+      const w = probe.videoWidth;
+      const h = probe.videoHeight;
+      if (w && h) {
+        const ratio = w / h;
+        let calculatedRatio = "16:9";
+        if (Math.abs(ratio - 9 / 16) < 0.15) calculatedRatio = "9:16";
+        else if (Math.abs(ratio - 4 / 5) < 0.1) calculatedRatio = "4:5";
+        else if (Math.abs(ratio - 1) < 0.1) calculatedRatio = "1:1";
+        else if (Math.abs(ratio - 21 / 9) < 0.15) calculatedRatio = "21:9";
+        else if (ratio < 0.9) calculatedRatio = "9:16";
+        setVideoAspectRatio(calculatedRatio);
+        setVideoResolution(`${w}x${h}`);
+      }
+      if (probe.duration && isFinite(probe.duration)) {
+        setVideoDuration(Math.max(1, Math.round(probe.duration)).toString());
+      }
+
+      if (shouldAutoCaptureThumb && w > 0 && h > 0) {
+        const targetTime = Math.min(1.5, Math.max(0.1, (probe.duration || 1) * 0.25));
+        probe.currentTime = targetTime;
+      } else {
+        probe.src = "";
+      }
+    };
+
+    probe.onseeked = () => {
+      if (!shouldAutoCaptureThumb) return;
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = probe.videoWidth || 640;
+        canvas.height = probe.videoHeight || 360;
+        const ctx = canvas.getContext("2d");
+        if (ctx && canvas.width > 0 && canvas.height > 0) {
+          ctx.drawImage(probe, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL("image/jpeg", 0.78);
+          setVideoThumbnail((prev) => prev || dataUrl);
+        }
+      } catch {
+        // Ignore CORS or canvas capture errors
+      } finally {
+        probe.src = "";
+      }
+    };
+
+    probe.onerror = () => {
+      probe.src = "";
+    };
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    e.target.value = "";
     if (!file) return;
+
+    const currentSettings = db.settings.get();
+    const maxVideoMB = currentSettings.maxVideoSizeMB || 100;
+    const maxImageMB = currentSettings.maxImageSizeMB || 10;
+    const ext = (file.name.split(".").pop() || "").toLowerCase();
+
+    if (activeMediaTab === "video") {
+      const allowedVideoExts = ["mp4", "mov", "mkv", "webm", "m4v", "avi", "ogv"];
+      if (!file.type.startsWith("video/") && !allowedVideoExts.includes(ext)) {
+        triggerToast("Invalid Video Format", "Please upload MP4, MOV, MKV, WEBM, or AVI video files.", "error");
+        return;
+      }
+      if (file.size > maxVideoMB * 1024 * 1024) {
+        triggerToast("File Too Large", `Video exceeds the maximum limit of ${maxVideoMB} MB.`, "error");
+        return;
+      }
+    } else {
+      const allowedImageExts = ["jpg", "jpeg", "png", "webp", "gif"];
+      if (!file.type.startsWith("image/") && !allowedImageExts.includes(ext)) {
+        triggerToast("Invalid Image Format", "Please upload JPG, PNG, WEBP, or GIF image files.", "error");
+        return;
+      }
+      if (file.size > maxImageMB * 1024 * 1024) {
+        triggerToast("File Too Large", `Image exceeds the maximum limit of ${maxImageMB} MB.`, "error");
+        return;
+      }
+    }
 
     // Auto-detect Creative Title from file name (stripping extension)
     const detectedTitle = extractTitleFromFileName(file.name);
-    if (detectedTitle) {
-      if (!title.trim() || !isTitleManuallyEdited) {
-        setTitle(detectedTitle);
-      }
-    }
-
-    if (file.size > 2 * 1024 * 1024) {
-      triggerToast("Large File Detected", "Processing media file for optimal playback...", "info");
+    if (detectedTitle && (!title.trim() || !isTitleManuallyEdited)) {
+      setTitle(detectedTitle);
     }
 
     setUploadedFileName(file.name);
+    setUploadedFileSizeBytes(file.size);
     const sizeInMB = file.size / (1024 * 1024);
     const sizeStr = sizeInMB >= 1 ? `${sizeInMB.toFixed(2)} MB` : `${(file.size / 1024).toFixed(1)} KB`;
     setUploadedFileSize(sizeStr);
-
     setMediaSource("UPLOAD");
+    setIsUploading(true);
+    setUploadProgress(0);
 
-    simulateProgress();
-    const reader = new FileReader();
-    reader.onloadend = async () => {
-      const rawBase64 = reader.result as string;
-      const isGif = file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif') || rawBase64.startsWith('data:image/gif');
-      
-      // Preserve GIF animation by bypassing canvas compression
-      if (file.type.startsWith('image/') || isGif) {
-        const finalMedia = isGif ? rawBase64 : await compressImage(rawBase64);
-        if (activeMediaTab === "blog") {
-          setBlogThumbnail(finalMedia);
-        } else {
-          setUploadedBase64(finalMedia);
-          setMediaUrl(finalMedia);
-        }
-      } else {
-        setUploadedBase64(rawBase64);
-        setMediaUrl(rawBase64);
+    if (activeMediaTab === "video") {
+      if (activeUploadXhrRef.current) {
+        try {
+          activeUploadXhrRef.current.abort();
+        } catch {}
       }
-      
-      triggerToast("File processed", `${file.name} ready for upload`, "success");
+      revokePreviewObjectUrl();
+
+      const localBlobUrl = URL.createObjectURL(file);
+      previewObjectUrlRef.current = localBlobUrl;
+      setUploadedBase64(localBlobUrl);
+      extractVideoMetadataAndThumbnail(localBlobUrl, !videoThumbnail);
+
+      const uploadVideoId = editingContent?.id || `vid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const xhr = new XMLHttpRequest();
+      activeUploadXhrRef.current = xhr;
+      xhr.open("POST", "/api/videos/upload", true);
+      xhr.setRequestHeader("Content-Type", file.type || "video/mp4");
+      xhr.setRequestHeader("X-File-Name", encodeURIComponent(file.name));
+      xhr.setRequestHeader("X-Video-Id", uploadVideoId);
+
+      xhr.upload.onprogress = (evt) => {
+        if (evt.lengthComputable && evt.total > 0) {
+          const pct = Math.min(99, Math.round((evt.loaded / evt.total) * 100));
+          setUploadProgress(pct);
+        }
+      };
+
+      const fallbackToDataUrl = () => {
+        if (file.size > 20 * 1024 * 1024) {
+          setIsUploading(false);
+          setUploadProgress(0);
+          setUploadedBase64(null);
+          setMediaUrl("");
+          triggerToast("Upload Failed", "Server video upload failed for a file larger than 20 MB.", "error");
+          return;
+        }
+        const reader = new FileReader();
+        reader.onprogress = (evt) => {
+          if (evt.lengthComputable && evt.total > 0) {
+            setUploadProgress(Math.min(99, Math.round((evt.loaded / evt.total) * 100)));
+          }
+        };
+        reader.onloadend = () => {
+          const rawBase64 = typeof reader.result === "string" ? reader.result : "";
+          setIsUploading(false);
+          if (rawBase64) {
+            setUploadProgress(100);
+            setUploadedBase64(rawBase64);
+            setMediaUrl(rawBase64);
+            triggerToast("Video Processed", `${file.name} ready for publish`, "success");
+          } else {
+            setUploadProgress(0);
+            triggerToast("Upload Failed", "Could not read video file.", "error");
+          }
+        };
+        reader.readAsDataURL(file);
+      };
+
+      xhr.onload = () => {
+        activeUploadXhrRef.current = null;
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const payload = JSON.parse(xhr.responseText);
+            if (payload?.success && payload?.url) {
+              setUploadProgress(100);
+              setIsUploading(false);
+              setMediaUrl(payload.url);
+              setUploadedBase64(payload.url);
+              revokePreviewObjectUrl();
+              triggerToast("Video Uploaded", `${file.name} uploaded and ready to publish.`, "success");
+              return;
+            }
+          } catch {
+            // Fall back below
+          }
+        }
+        fallbackToDataUrl();
+      };
+
+      xhr.onerror = () => {
+        activeUploadXhrRef.current = null;
+        fallbackToDataUrl();
+      };
+
+      xhr.send(file);
+      return;
+    }
+
+    // Photo & Blog cover upload with real FileReader progress
+    const reader = new FileReader();
+    reader.onprogress = (evt) => {
+      if (evt.lengthComputable && evt.total > 0) {
+        setUploadProgress(Math.min(95, Math.round((evt.loaded / evt.total) * 100)));
+      }
+    };
+    reader.onloadend = async () => {
+      const rawBase64 = typeof reader.result === "string" ? reader.result : "";
+      if (!rawBase64) {
+        setIsUploading(false);
+        setUploadProgress(0);
+        triggerToast("Upload Failed", "Could not read selected image file.", "error");
+        return;
+      }
+      const isGif = file.type === 'image/gif' || file.name.toLowerCase().endsWith('.gif') || rawBase64.startsWith('data:image/gif');
+      const finalMedia = isGif ? rawBase64 : await compressImage(rawBase64);
+      if (activeMediaTab === "blog") {
+        setBlogThumbnail(finalMedia);
+      } else {
+        setUploadedBase64(finalMedia);
+        setMediaUrl(finalMedia);
+      }
+      setUploadProgress(100);
+      setIsUploading(false);
+      triggerToast("File Processed", `${file.name} ready for upload`, "success");
+    };
+    reader.onerror = () => {
+      setIsUploading(false);
+      setUploadProgress(0);
+      triggerToast("Upload Error", "Failed to read file from device.", "error");
     };
     reader.readAsDataURL(file);
   };
@@ -457,19 +647,45 @@ export const ContentCreator: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
-  const handlePublishSubmit = (e: React.FormEvent, isDraft: boolean = false) => {
+  const handlePublishSubmit = async (e: React.FormEvent, isDraft: boolean = false) => {
     e.preventDefault();
     if (!title.trim() || !user) {
       triggerToast("Invalid Submission", "Title is required", "info");
       return;
     }
 
+    if (isUploading) {
+      triggerToast("Upload in Progress", "Please wait until media upload finishes.", "info");
+      return;
+    }
+
+    const mediaType = editingContent ? editingContent.type : activeMediaTab;
+
+    if (!isDraft) {
+      if (mediaType === "photo" && !mediaUrl.trim()) {
+        triggerToast("Media Required", "Please upload an image or enter a valid image URL.", "error");
+        return;
+      }
+      if (mediaType === "video") {
+        if (mediaSource === "EMBED") {
+          const validEmbeds = videoEmbedUrls.map(u => u.trim()).filter(u => u.length > 0 && isValidEmbedUrl(u));
+          if (validEmbeds.length === 0) {
+            triggerToast("Embed URL Required", "Please enter a valid video embed URL before publishing.", "error");
+            return;
+          }
+        } else if (!mediaUrl.trim() || !isValidMediaUrl(mediaUrl)) {
+          triggerToast("Video Required", "Please upload a video file or provide a valid video stream URL.", "error");
+          return;
+        }
+      }
+    }
+
     // Storage Quota Guard
-    const stats = db.maintenance.getUsage();
-    if (Number(stats.percentage) > 95) {
+    const usageStats = db.maintenance.getUsage();
+    if (Number(usageStats.percentage) > 95) {
       triggerToast(
         "Critical Storage Limit", 
-        "Your local storage is almost full. Please delete old content or clear logs in Admin Dashboard before publishing more.", 
+        "Database memory quota is almost full. Please clean old logs before publishing more.", 
         "info"
       );
       return;
@@ -490,8 +706,6 @@ export const ContentCreator: React.FC = () => {
       triggerToast("Submission Denied 🛑", `The tag "#${bannedWord}" has been banned and cannot be used.`, "error");
       return;
     }
-
-    const mediaType = editingContent ? editingContent.type : activeMediaTab;
     
     // Evaluate Media Approval Policy from System Settings
     const currentSettings = db.settings.get();
@@ -503,8 +717,8 @@ export const ContentCreator: React.FC = () => {
       status = "DRAFT";
     } else if (editingContent) {
       status = editingContent.status; // Preserve existing status when editing!
-    } else if (user.role === "SUPER_ADMIN") {
-      status = "APPROVED"; // Super Admin always published directly
+    } else if (user.role === "SUPER_ADMIN" || user.role === "ADMIN") {
+      status = "APPROVED"; // Super Admin & Admin publish directly
     } else if (isAutoPublish) {
       status = "APPROVED"; // ON -> Automatic Publishing Enabled -> Published directly!
     } else {
@@ -512,11 +726,11 @@ export const ContentCreator: React.FC = () => {
     }
     
     const itemData: any = {
-      id: editingContent ? editingContent.id : Math.random().toString(36).substr(2, 9),
+      id: editingContent ? editingContent.id : `nv-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       userId: user.id,
       authorName: user.username,
       authorAvatar: user.profile?.avatarUrl || "",
-      title,
+      title: title.trim(),
       description,
       tags: uniqueTagsArray,
       status: status,
@@ -538,7 +752,7 @@ export const ContentCreator: React.FC = () => {
       itemData.sourceType = mediaSource;
       itemData.url = mediaUrl;
       itemData.thumbnailUrl = photoThumbnail || mediaUrl;
-      itemData.resolution = videoResolution; // Reusing state for photo too
+      itemData.resolution = videoResolution;
       itemData.aspectRatio = videoAspectRatio;
       if (editingContent) db.photos.update(itemData.id, itemData); else db.photos.add(itemData);
     } else if (mediaType === "video") {
@@ -548,26 +762,42 @@ export const ContentCreator: React.FC = () => {
           .map(u => u.trim())
           .filter(u => u.length > 0);
         const uniqueEmbedUrls = Array.from(new Set(cleanedEmbedUrls));
+        const primaryEmbed = uniqueEmbedUrls[0] || mediaUrl || "";
         itemData.videoUrls = uniqueEmbedUrls.length > 0 ? uniqueEmbedUrls : (mediaUrl ? [mediaUrl] : []);
-        itemData.url = uniqueEmbedUrls[0] || mediaUrl || "";
+        itemData.url = primaryEmbed;
+        itemData.embedUrl = primaryEmbed ? getEmbedIframeSrc(primaryEmbed) : undefined;
+        itemData.externalReference = primaryEmbed || undefined;
         itemData.isExternal = true;
-        itemData.externalProvider = itemData.url.includes("youtube") ? "YOUTUBE" : itemData.url.includes("vimeo") ? "VIMEO" : "OTHER";
+        itemData.externalProvider = primaryEmbed.includes("youtube") || primaryEmbed.includes("youtu.be")
+          ? "YOUTUBE"
+          : primaryEmbed.includes("vimeo")
+          ? "VIMEO"
+          : "OTHER";
       } else {
         itemData.url = mediaUrl;
         itemData.videoUrls = mediaUrl ? [mediaUrl] : [];
         if (mediaSource === "URL") {
           itemData.isExternal = true;
           itemData.externalProvider = "DIRECT";
+          itemData.externalReference = mediaUrl || undefined;
         }
       }
-      itemData.thumbnailUrl = videoThumbnail;
+      itemData.thumbnailUrl = videoThumbnail || "";
       itemData.duration = Number(videoDuration) || 0;
       itemData.resolution = videoResolution;
       itemData.aspectRatio = videoAspectRatio;
       itemData.codec = "h264 (H.264 / AVC)";
-      itemData.fileSize = mediaUrl.startsWith('data:') ? Math.round(mediaUrl.length * 0.75) : 0; // Rough estimate for base64
+      itemData.fileSize = uploadedFileSizeBytes || (mediaUrl.startsWith('data:') ? Math.round(mediaUrl.length * 0.75) : (editingContent?.fileSize || 0));
       if (editingContent) db.videos.update(itemData.id, itemData); else db.videos.add(itemData);
     }
+
+    const syncRes = await db.syncNow([
+      STORAGE_KEYS.BLOGS,
+      STORAGE_KEYS.PHOTOS,
+      STORAGE_KEYS.VIDEOS,
+      STORAGE_KEYS.TAGS,
+      STORAGE_KEYS.NOTIFICATIONS,
+    ]);
 
     let toastTitle = "Success";
     let toastMessage = "Work processed successfully";
@@ -579,17 +809,20 @@ export const ContentCreator: React.FC = () => {
       toastMessage = "Asset modifications have been saved.";
     } else if (status === "APPROVED") {
       toastTitle = "Published Immediately 🎉";
-      toastMessage = isAutoPublish 
-        ? "Automatic Publishing Enabled: Your work is now live on the platform!" 
-        : "Super Admin authorization: Content published live!";
+      toastMessage = (user.role === "SUPER_ADMIN" || user.role === "ADMIN")
+        ? "Administrator authorization: Content published live!"
+        : "Automatic Publishing Enabled: Your work is now live on the platform!";
     } else {
       toastTitle = "Submitted for Approval ⏳";
       toastMessage = "Manual Approval Required: Your work has been routed to the Super Admin Approval Queue.";
     }
 
-    triggerToast(toastTitle, toastMessage, status === "APPROVED" || isDraft ? "success" : "info");
+    if (!syncRes.ok) {
+      triggerToast("Saved Locally (Sync Warning)", `${toastMessage} (${syncRes.error || "Supabase sync pending"})`, "info");
+    } else {
+      triggerToast(toastTitle, toastMessage, status === "APPROVED" || isDraft ? "success" : "info");
+    }
 
-    triggerDBSync();
     resetForm();
     setEditingContent(null);
     setActiveTab("overview");
@@ -662,7 +895,9 @@ export const ContentCreator: React.FC = () => {
       if (editItem.sourceType === "LAPTOP" || editItem.sourceType === "MOBILE" || editItem.sourceType === "UPLOAD") {
         setUploadedBase64(editItem.url || "");
         setUploadedFileName("nightverse_video.mp4");
-        setUploadedFileSize("~4.8 MB");
+        const bytes = Number(editItem.fileSize || 0);
+        setUploadedFileSizeBytes(bytes);
+        setUploadedFileSize(bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(2)} MB` : bytes > 0 ? `${(bytes / 1024).toFixed(1)} KB` : "Uploaded");
         setUploadProgress(100);
       }
       if (editItem.thumbnailUrl) {
@@ -692,26 +927,32 @@ export const ContentCreator: React.FC = () => {
   };
 
   const generateVideoThumbnail = () => {
-    if (!mediaUrl) {
-      triggerToast("Reference Required", "Please provide a video source node first.", "info");
+    const sourceForCapture = mediaUrl || uploadedBase64;
+    if (!sourceForCapture || mediaSource === "EMBED") {
+      triggerToast("Reference Required", "Please upload a video or provide a direct video URL first.", "info");
       return;
     }
     
     setIsLoading(true);
     const video = document.createElement('video');
-    video.src = mediaUrl;
-    video.crossOrigin = "anonymous";
-    video.currentTime = captureTime;
+    video.preload = "auto";
+    video.muted = true;
+    video.playsInline = true;
+    if (sourceForCapture.startsWith("http://") || sourceForCapture.startsWith("https://")) {
+      video.crossOrigin = "anonymous";
+    }
+    video.src = sourceForCapture;
     
-    video.onloadeddata = () => {
-      video.currentTime = captureTime;
+    video.onloadedmetadata = () => {
+      const safeDuration = video.duration && isFinite(video.duration) ? video.duration : captureTime + 1;
+      video.currentTime = Math.min(Math.max(0, captureTime), Math.max(0.1, safeDuration - 0.1));
     };
 
     video.onseeked = () => {
       try {
         const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 360;
         const ctx = canvas.getContext('2d');
         ctx?.drawImage(video, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
@@ -721,16 +962,18 @@ export const ContentCreator: React.FC = () => {
           setVideoThumbnail(dataUrl);
         }
         triggerToast("Frame Captured", "Video thumbnail generated from source material.", "success");
-      } catch (err) {
+      } catch {
         triggerToast("CORS Restriction", "Cannot capture frame from external domain. Manual URL required.", "error");
       } finally {
         setIsLoading(false);
+        video.src = "";
       }
     };
 
     video.onerror = () => {
       triggerToast("Link Error", "Failed to load video stream for frame analysis.", "error");
       setIsLoading(false);
+      video.src = "";
     };
   };
 
@@ -822,6 +1065,13 @@ export const ContentCreator: React.FC = () => {
   }, [mediaUrl, activeMediaTab, mediaSource]);
 
   const resetForm = () => {
+    if (activeUploadXhrRef.current) {
+      try {
+        activeUploadXhrRef.current.abort();
+      } catch {}
+      activeUploadXhrRef.current = null;
+    }
+    revokePreviewObjectUrl();
     setEditingContent(null);
     setTitle("");
     setIsTitleManuallyEdited(false);
@@ -835,6 +1085,7 @@ export const ContentCreator: React.FC = () => {
     setVideoThumbnail("");
     setPhotoThumbnail("");
     setVideoDuration("");
+    setVideoResolution("1080p");
     setVideoAspectRatio("16:9");
     setVideoEmbedUrls([""]);
     setIsUploading(false);
@@ -842,6 +1093,7 @@ export const ContentCreator: React.FC = () => {
     setBlogCoverSource("UPLOAD");
     setUploadedFileName("");
     setUploadedFileSize("");
+    setUploadedFileSizeBytes(0);
     setVisibility("public");
     setEngagement("open");
   };
@@ -958,11 +1210,31 @@ export const ContentCreator: React.FC = () => {
                 <div className="space-y-3">
                   {uploads.slice(0, 5).map((u, i) => (
                     <div key={i} className="flex items-center gap-4 p-3 bg-slate-900/30 border border-slate-800 rounded-2xl hover:bg-slate-800/40 transition-all">
-                      <img 
-                        src={u.thumbnailUrl || u.url || undefined} 
-                        className="w-16 h-16 rounded-xl object-cover border border-slate-700" 
-                        alt="thumb" 
-                      />
+                      {u.thumbnailUrl ? (
+                        <img 
+                          src={u.thumbnailUrl} 
+                          className="w-16 h-16 rounded-xl object-cover border border-slate-700 shrink-0" 
+                          alt="thumb" 
+                        />
+                      ) : u.type === "video" && u.sourceType !== "EMBED" && u.url ? (
+                        <video
+                          src={u.url}
+                          muted
+                          playsInline
+                          preload="metadata"
+                          className="w-16 h-16 rounded-xl object-cover border border-slate-700 bg-slate-950 shrink-0"
+                        />
+                      ) : u.type !== "video" && u.url ? (
+                        <img 
+                          src={u.url} 
+                          className="w-16 h-16 rounded-xl object-cover border border-slate-700 shrink-0" 
+                          alt="thumb" 
+                        />
+                      ) : (
+                        <div className="w-16 h-16 rounded-xl border border-slate-700 bg-slate-950 flex items-center justify-center shrink-0">
+                          <Video className="w-5 h-5 text-purple-400/60" />
+                        </div>
+                      )}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5 mb-1 flex-wrap">
                           <span className="text-[10px] font-mono font-bold text-slate-500 uppercase tracking-tighter">{u.type}</span>
@@ -1077,7 +1349,31 @@ export const ContentCreator: React.FC = () => {
                       key={m.id}
                       type="button"
                       disabled={!!editingContent && activeMediaTab !== m.id}
-                      onClick={() => setActiveMediaTab(m.id as any)}
+                      onClick={() => {
+                        const targetTab = m.id as "blog" | "photo" | "video";
+                        if (!editingContent && targetTab !== activeMediaTab) {
+                          if (activeUploadXhrRef.current) {
+                            try { activeUploadXhrRef.current.abort(); } catch {}
+                            activeUploadXhrRef.current = null;
+                          }
+                          revokePreviewObjectUrl();
+                          setUploadedBase64(null);
+                          setMediaUrl("");
+                          setUploadedFileName("");
+                          setUploadedFileSize("");
+                          setUploadedFileSizeBytes(0);
+                          setIsUploading(false);
+                          setUploadProgress(0);
+                          setVideoThumbnail("");
+                          setPhotoThumbnail("");
+                          setVideoDuration("");
+                          setVideoEmbedUrls([""]);
+                          if (targetTab !== "video" && mediaSource === "EMBED") {
+                            setMediaSource("UPLOAD");
+                          }
+                        }
+                        setActiveMediaTab(targetTab);
+                      }}
                       className={`flex items-center gap-2 px-6 py-3 rounded-xl text-xs font-bold transition-all ${
                         activeMediaTab === m.id 
                           ? "bg-slate-800 text-white border border-slate-700 shadow-inner" 
@@ -1543,7 +1839,30 @@ export const ContentCreator: React.FC = () => {
                                         />
                                       )}
                                       <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover/preview:opacity-100 flex items-center justify-center transition-all backdrop-blur-sm">
-                                         <button type="button" onClick={() => setUploadedBase64(null)} className="p-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl transition-all hover:scale-110 shadow-lg shadow-rose-500/20"><Trash2 className="w-5 h-5" /></button>
+                                         <button 
+                                           type="button" 
+                                           onClick={() => {
+                                             if (activeUploadXhrRef.current) {
+                                               try { activeUploadXhrRef.current.abort(); } catch {}
+                                               activeUploadXhrRef.current = null;
+                                             }
+                                             revokePreviewObjectUrl();
+                                             setUploadedBase64(null);
+                                             setMediaUrl("");
+                                             setUploadedFileName("");
+                                             setUploadedFileSize("");
+                                             setUploadedFileSizeBytes(0);
+                                             setUploadProgress(0);
+                                             setIsUploading(false);
+                                             setVideoDuration("");
+                                             setVideoResolution("1080p");
+                                             setVideoThumbnail("");
+                                             setPhotoThumbnail("");
+                                           }} 
+                                           className="p-2.5 bg-rose-600 hover:bg-rose-500 text-white rounded-xl transition-all hover:scale-110 shadow-lg shadow-rose-500/20"
+                                         >
+                                           <Trash2 className="w-5 h-5" />
+                                         </button>
                                       </div>
                                    </div>
                                    <div className="flex-1 flex flex-col justify-center min-w-0">
@@ -2025,11 +2344,21 @@ export const ContentCreator: React.FC = () => {
                   </div>
 
                   <div className="flex items-center justify-end gap-3 pt-8">
-                     <button type="button" onClick={(e) => handlePublishSubmit(e, true)} className="px-6 py-3 rounded-2xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-900 transition-all text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                     <button 
+                       type="button" 
+                       disabled={isUploading}
+                       onClick={(e) => handlePublishSubmit(e, true)} 
+                       className="px-6 py-3 rounded-2xl bg-slate-950 border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-900 transition-all text-xs font-bold uppercase tracking-widest flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                     >
                         <Save className="w-4 h-4" /> Save Draft
                      </button>
-                     <button type="submit" className="px-10 py-3 rounded-2xl bg-purple-650 hover:bg-purple-600 text-white shadow-xl shadow-purple-600/20 transition-all text-xs font-bold uppercase tracking-widest flex items-center gap-2">
-                        <Send className="w-4 h-4" /> {editingContent ? "Update Work" : "Create Work"}
+                     <button 
+                       type="submit" 
+                       disabled={isUploading}
+                       className="px-10 py-3 rounded-2xl bg-purple-650 hover:bg-purple-600 text-white shadow-xl shadow-purple-600/20 transition-all text-xs font-bold uppercase tracking-widest flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                     >
+                        {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                        {isUploading ? `Uploading ${uploadProgress}%` : (editingContent ? "Update Work" : "Create Work")}
                      </button>
                   </div>
                </form>
@@ -2053,9 +2382,9 @@ export const ContentCreator: React.FC = () => {
                           <img src={blogThumbnail || "https://images.unsplash.com/photo-1542831371-29b0f74f9713?auto=format&fit=crop&q=80&w=600"} className="w-full h-full object-cover opacity-60" />
                         )}
                         {(activeMediaTab === "photo" || activeMediaTab === "video") && (
-                           mediaUrl ? (
+                           (mediaUrl || uploadedBase64) ? (
                              activeMediaTab === "photo" ? (
-                               <img src={mediaUrl || undefined} className="w-full h-full object-cover" />
+                               <img src={mediaUrl || uploadedBase64 || undefined} className="w-full h-full object-cover" />
                              ) : mediaSource === "EMBED" ? (
                                <div className="w-full h-full bg-slate-950 flex flex-col items-center justify-center p-6 text-center border-b border-slate-800">
                                   <Globe className="w-10 h-10 text-purple-500 mb-2 opacity-50" />
@@ -2065,7 +2394,7 @@ export const ContentCreator: React.FC = () => {
                                   </div>
                                </div>
                              ) : (
-                               <video src={mediaUrl || undefined} className="w-full h-full object-cover" autoPlay muted loop />
+                               <video src={mediaUrl || uploadedBase64 || undefined} poster={videoThumbnail || undefined} className="w-full h-full object-cover" autoPlay muted loop playsInline />
                              )
                            ) : (
                              <div className="w-full h-full flex flex-col items-center justify-center p-12 text-center">
@@ -2252,7 +2581,17 @@ export const ContentCreator: React.FC = () => {
                   .map((item, i) => (
                     <div key={i} className="group bg-slate-900/40 border border-slate-800 rounded-3xl overflow-hidden hover:border-purple-500/30 transition-all flex flex-col">
                        <div className="aspect-video relative bg-slate-950">
-                          <img src={item.thumbnailUrl || item.url || null} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="thumb" />
+                          {item.thumbnailUrl ? (
+                            <img src={item.thumbnailUrl} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="thumb" />
+                          ) : item.type === "video" && item.sourceType !== "EMBED" && item.url ? (
+                            <video src={item.url} muted playsInline preload="metadata" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                          ) : item.type !== "video" && item.url ? (
+                            <img src={item.url} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="thumb" />
+                          ) : (
+                            <div className="w-full h-full bg-gradient-to-br from-slate-900 via-purple-950/30 to-slate-950 flex items-center justify-center">
+                              <Video className="w-10 h-10 text-purple-400/50" />
+                            </div>
+                          )}
                           <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
                              <span className="text-[8px] font-bold uppercase tracking-widest bg-slate-950/80 backdrop-blur px-2 py-0.5 rounded text-slate-300 border border-slate-800">{item.type}</span>
                              <span className={`text-[8px] font-bold uppercase tracking-widest px-2 py-0.5 rounded border ${getStatusColor(item.status)}`}>{item.status}</span>

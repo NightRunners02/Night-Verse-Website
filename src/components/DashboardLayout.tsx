@@ -27,8 +27,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
   const [showSearchDropdown, setShowSearchDropdown] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isSearchExpanded, setIsSearchExpanded] = useState(false);
+  const [logoLoadError, setLogoLoadError] = useState(false);
   const searchContainerRef = React.useRef<HTMLDivElement>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    setLogoLoadError(false);
+  }, [systemSettings?.logoUrl]);
 
   // Collapse when clicking outside if no active query
   React.useEffect(() => {
@@ -147,8 +152,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
             <div className={`flex items-center ${sidebarCollapsed && !mobileMenuOpen ? "justify-center" : "justify-between gap-2.5"} h-10 px-2 flex-shrink-0`}>
               {(!sidebarCollapsed || mobileMenuOpen) && (
                 <div className="flex items-center gap-2 select-none pointer-events-none">
-                  {systemSettings?.logoUrl ? (
-                    <img src={systemSettings.logoUrl} className="w-8 h-8 rounded-lg object-contain bg-slate-950 p-0.5" alt="app logo" />
+                  {systemSettings?.logoUrl && !logoLoadError ? (
+                    <img
+                      src={systemSettings.logoUrl}
+                      onError={() => setLogoLoadError(true)}
+                      className="w-8 h-8 rounded-lg object-contain bg-slate-950 p-0.5"
+                      alt="app logo"
+                    />
                   ) : (
                     <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-purple-600 to-indigo-500 p-[1px]">
                       <div className="w-full h-full bg-slate-950 rounded-[7px] flex items-center justify-center font-space font-bold uppercase text-[10px] text-transparent bg-clip-text bg-gradient-to-tr from-purple-400 to-indigo-300">
@@ -163,8 +173,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) =>
               )}
 
               {sidebarCollapsed && !mobileMenuOpen && (
-                systemSettings?.logoUrl ? (
-                  <img src={systemSettings.logoUrl} className="w-8 h-8 rounded-lg object-contain bg-slate-950 p-0.5" alt="app logo" />
+                systemSettings?.logoUrl && !logoLoadError ? (
+                  <img
+                    src={systemSettings.logoUrl}
+                    onError={() => setLogoLoadError(true)}
+                    className="w-8 h-8 rounded-lg object-contain bg-slate-950 p-0.5"
+                    alt="app logo"
+                  />
                 ) : (
                   <div className="w-8 h-8 rounded-lg bg-purple-600/20 flex items-center justify-center text-purple-400 font-bold text-xs">
                      {systemSettings?.logoText?.substring(0, 2) || "NV"}

@@ -55,32 +55,71 @@ export function validateFaviconFile(file: File): { isValid: boolean; error?: str
   };
 }
 
+function resolveFaviconMimeType(rawUrl: string): string | null {
+  const lower = rawUrl.toLowerCase();
+  if (lower.startsWith("data:")) {
+    if (lower.startsWith("data:image/x-icon") || lower.startsWith("data:image/vnd.microsoft.icon") || lower.startsWith("data:image/ico")) {
+      return "image/x-icon";
+    }
+    if (lower.startsWith("data:image/png")) {
+      return "image/png";
+    }
+    if (lower.startsWith("data:image/svg+xml")) {
+      return "image/svg+xml";
+    }
+    return null;
+  }
+
+  if (/[?&]ext=ico(?:&|$)/i.test(lower) || /\.ico(?:[?#]|$)/i.test(lower)) {
+    return "image/x-icon";
+  }
+  if (/[?&]ext=png(?:&|$)/i.test(lower) || /\.png(?:[?#]|$)/i.test(lower)) {
+    return "image/png";
+  }
+  if (/[?&]ext=svg(?:&|$)/i.test(lower) || /\.svg(?:[?#]|$)/i.test(lower)) {
+    return "image/svg+xml";
+  }
+  return null;
+}
+
+function buildCacheBustedFaviconUrl(rawUrl: string, updatedAt?: number): string {
+  if (rawUrl.startsWith("data:")) {
+    return rawUrl;
+  }
+
+  const buster = updatedAt && updatedAt > 0 ? updatedAt : 0;
+  try {
+    const origin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    const parsed = new URL(rawUrl, origin);
+    if (buster > 0) {
+      parsed.searchParams.set("v", String(buster));
+    } else if (!parsed.searchParams.has("v") && rawUrl !== DEFAULT_FAVICON_URL) {
+      parsed.searchParams.set("v", String(Date.now()));
+    }
+    if (rawUrl.startsWith("/") && !rawUrl.startsWith("//")) {
+      return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    }
+    return parsed.toString();
+  } catch {
+    if (buster <= 0 && rawUrl === DEFAULT_FAVICON_URL) {
+      return rawUrl;
+    }
+    const separator = rawUrl.includes("?") ? "&" : "?";
+    const cleanUrl = rawUrl.replace(/([?&])v=[^&]*&?/g, "$1").replace(/[?&]$/, "");
+    const nextSep = cleanUrl.includes("?") ? "&" : separator;
+    return `${cleanUrl}${nextSep}v=${buster > 0 ? buster : Date.now()}`;
+  }
+}
+
 /**
  * Applies favicon to browser head links with cache busting and automatic fallback
  */
 export function updateBrowserFavicon(url?: string, updatedAt?: number): void {
-  if (typeof document === "undefined") return;
+  if (typeof document === "undefined" || !document.head) return;
 
   const rawUrl = url && url.trim() ? url.trim() : DEFAULT_FAVICON_URL;
-  
-  // Format cache busted URL (unless it's a data URI)
-  let finalUrl = rawUrl;
-  if (!rawUrl.startsWith("data:")) {
-    const separator = rawUrl.includes("?") ? "&" : "?";
-    const buster = updatedAt && updatedAt > 0 ? updatedAt : Date.now();
-    // Only append if it doesn't already have ?v= matching
-    if (!rawUrl.includes("v=")) {
-      finalUrl = `${rawUrl}${separator}v=${buster}`;
-    }
-  }
-
-  // Determine MIME type based on extension
-  let mimeType = "image/svg+xml";
-  if (rawUrl.includes(".ico") || rawUrl.includes("image/x-icon")) {
-    mimeType = "image/x-icon";
-  } else if (rawUrl.includes(".png") || rawUrl.includes("image/png")) {
-    mimeType = "image/png";
-  }
+  const finalUrl = buildCacheBustedFaviconUrl(rawUrl, updatedAt);
+  const mimeType = resolveFaviconMimeType(rawUrl);
 
   const applyToLink = (rel: string, id: string) => {
     let link = document.querySelector(`link#${id}`) as HTMLLinkElement | null;
@@ -92,31 +131,38 @@ export function updateBrowserFavicon(url?: string, updatedAt?: number): void {
       link.id = id;
       link.rel = rel;
       document.head.appendChild(link);
+    } else {
+      link.id = id;
+      link.rel = rel;
     }
-    link.type = mimeType;
+
+    if (mimeType) {
+      link.type = mimeType;
+    } else {
+      link.removeAttribute("type");
+    }
     link.href = finalUrl;
     return link;
   };
 
   const primaryLink = applyToLink("icon", "app-favicon");
-  applyToLink("shortcut icon", "app-shortcut-favicon");
-  applyToLink("apple-touch-icon", "app-apple-favicon");
+  const shortcutLink = applyToLink("shortcut icon", "app-shortcut-favicon");
+  const appleLink = applyToLink("apple-touch-icon", "app-apple-favicon");
 
   // Fallback verification: test if image loads, else fall back to default
-  if (!rawUrl.startsWith("data:") && rawUrl !== DEFAULT_FAVICON_URL) {
+  const isDefaultUrl = rawUrl === DEFAULT_FAVICON_URL || rawUrl.startsWith(`${DEFAULT_FAVICON_URL}?`);
+  if (!rawUrl.startsWith("data:") && !isDefaultUrl) {
     const testImg = new Image();
     testImg.onerror = () => {
       console.warn("[NightVerse Favicon] Failed to load custom favicon from:", finalUrl, "- Reverting to default NightVerse icon.");
-      if (primaryLink) {
-        primaryLink.type = "image/svg+xml";
-        primaryLink.href = DEFAULT_FAVICON_URL;
-      }
-      const shortcut = document.getElementById("app-shortcut-favicon") as HTMLLinkElement | null;
-      if (shortcut) {
-        shortcut.type = "image/svg+xml";
-        shortcut.href = DEFAULT_FAVICON_URL;
-      }
+      [primaryLink, shortcutLink, appleLink].forEach((el) => {
+        if (el) {
+          el.type = "image/svg+xml";
+          el.href = DEFAULT_FAVICON_URL;
+        }
+      });
     };
     testImg.src = finalUrl;
   }
 }
+

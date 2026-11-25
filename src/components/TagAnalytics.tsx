@@ -1261,8 +1261,16 @@ export const TagAnalytics: React.FC = () => {
                         }}
                         className="p-2.5 bg-slate-950 hover:bg-slate-850 border border-slate-850 hover:border-purple-500/40 rounded-xl cursor-pointer transition-all flex items-center gap-2.5 group"
                       >
-                        <div className="w-8 h-8 rounded-lg bg-slate-800 overflow-hidden shrink-0">
-                          <img src={item.thumbnailUrl || item.url} className="w-full h-full object-cover" alt="" />
+                        <div className="w-8 h-8 rounded-lg bg-slate-800 overflow-hidden shrink-0 flex items-center justify-center">
+                          {item.thumbnailUrl ? (
+                            <img src={item.thumbnailUrl} className="w-full h-full object-cover" alt="" />
+                          ) : item.type === "video" && item.sourceType !== "EMBED" && item.url ? (
+                            <video src={item.url} muted playsInline preload="metadata" className="w-full h-full object-cover" />
+                          ) : item.type === "photo" && item.url ? (
+                            <img src={item.url} className="w-full h-full object-cover" alt="" />
+                          ) : (
+                            <span className="text-[10px] text-purple-400">▶</span>
+                          )}
                         </div>
                         <div className="min-w-0 flex-1">
                           <h5 className="text-xs font-bold text-slate-200 truncate group-hover:text-purple-400">{item.title}</h5>

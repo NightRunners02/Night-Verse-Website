@@ -70,6 +70,7 @@ import { db } from "../lib/db.js";
 import { STORAGE_KEYS } from "../lib/supabaseSync.js";
 import { getBadgeIconComponent } from "../lib/badgeIcons.js";
 import { validateFaviconFile, DEFAULT_FAVICON_URL } from "../lib/favicon.js";
+import { validateLogoUrl } from "../lib/logo.js";
 import { DocumentationManagement } from "./DocumentationManagement.js";
 import { TicketCenter } from "./TicketCenter.js";
 
@@ -86,6 +87,8 @@ export const AdminWorkspace: React.FC = () => {
     saveSystemSettings, 
     uploadFavicon, 
     resetFavicon, 
+    uploadLogo,
+    resetLogo,
     createNotification, 
     followActionCount, 
     triggerDBSync, 
@@ -213,6 +216,7 @@ export const AdminWorkspace: React.FC = () => {
 
   // System Settings state mirrors
   const [localSettings, setLocalSettings] = useState<SystemSettings>(systemSettings);
+  const lastSyncedSettingsJsonRef = React.useRef<string>(JSON.stringify(systemSettings));
 
   // Favicon Management state
   const [stagedFaviconFile, setStagedFaviconFile] = useState<File | null>(null);
@@ -220,8 +224,18 @@ export const AdminWorkspace: React.FC = () => {
   const [isSavingFavicon, setIsSavingFavicon] = useState(false);
   const [isResettingFavicon, setIsResettingFavicon] = useState(false);
 
+  // Application Logo Management state
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+  const [logoPreviewError, setLogoPreviewError] = useState(false);
+
   useEffect(() => {
-    setLocalSettings(systemSettings);
+    if (!systemSettings) return;
+    const serialized = JSON.stringify(systemSettings);
+    if (serialized !== lastSyncedSettingsJsonRef.current) {
+      lastSyncedSettingsJsonRef.current = serialized;
+      setLocalSettings(systemSettings);
+      setLogoPreviewError(false);
+    }
   }, [systemSettings]);
 
   // Content deletion modal inside reports
@@ -266,13 +280,6 @@ export const AdminWorkspace: React.FC = () => {
     requirement: "",
     colorScheme: "purple"
   });
-
-  // Sync settings when context loaded
-  useEffect(() => {
-    if (systemSettings) {
-      setLocalSettings(systemSettings);
-    }
-  }, [systemSettings]);
 
   // Reset taxonomyNodePage when tagQuery changes
   useEffect(() => {
@@ -775,6 +782,7 @@ export const AdminWorkspace: React.FC = () => {
       triggerToast("Preview Favicon Siap", `File "${file.name}" siap disimpan. Klik Save Changes untuk menerapkan.`, "info");
     };
     reader.readAsDataURL(file);
+    e.target.value = "";
   };
 
   const handleSaveFaviconChanges = async () => {
@@ -816,9 +824,53 @@ export const AdminWorkspace: React.FC = () => {
     }
   };
 
-  const handleSaveWorkspaceSettings = () => {
-    saveSystemSettings(localSettings);
-    loadAllAdminMetrics();
+  const handleLogoFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setIsUploadingLogo(true);
+    setLogoPreviewError(false);
+    const res = await uploadLogo(file);
+    setIsUploadingLogo(false);
+
+    if (res.success) {
+      setLocalSettings(prev => ({ ...prev, logoUrl: res.logoUrl }));
+    }
+  };
+
+  const handleApplyLogoUrl = async () => {
+    const logoCheck = validateLogoUrl(localSettings.logoUrl);
+    if (!logoCheck.isValid) {
+      triggerToast("URL Logo Tidak Valid", logoCheck.error || "URL tidak didukung.", "error");
+      return;
+    }
+
+    setIsUploadingLogo(true);
+    const ok = await saveSystemSettings({ logoUrl: logoCheck.normalized });
+    setIsUploadingLogo(false);
+    if (ok) {
+      setLogoPreviewError(false);
+      setLocalSettings(prev => ({ ...prev, logoUrl: logoCheck.normalized }));
+    }
+  };
+
+  const handleResetAppLogo = async () => {
+    setIsUploadingLogo(true);
+    const ok = await resetLogo();
+    setIsUploadingLogo(false);
+    if (ok) {
+      setLogoPreviewError(false);
+      setLocalSettings(prev => ({ ...prev, logoUrl: undefined }));
+    }
+  };
+
+  const handleSaveWorkspaceSettings = async () => {
+    const { faviconUrl: _omitUrl, faviconUpdatedAt: _omitUpdatedAt, ...coreSettings } = localSettings;
+    const saved = await saveSystemSettings(coreSettings);
+    if (saved) {
+      loadAllAdminMetrics();
+    }
   };
 
   const handleToggleFloatingToasts = () => {
@@ -1868,9 +1920,15 @@ export const AdminWorkspace: React.FC = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {filteredPendingVideos.map(v => (
                         <div key={v.id} className="p-4 bg-slate-900/30 border border-slate-850 rounded-2xl flex gap-4">
-                          <div className="w-24 h-20 bg-slate-900 rounded-xl overflow-hidden relative flex-shrink-0">
-                            <img src={v.thumbnailUrl || null} className="w-full h-full object-cover opacity-60" alt="reel thumbnail" />
-                            <span className="absolute inset-0 flex items-center justify-center text-xs">▶</span>
+                          <div className="w-24 h-20 bg-slate-900 rounded-xl overflow-hidden relative flex-shrink-0 border border-slate-800">
+                            {v.thumbnailUrl ? (
+                              <img src={v.thumbnailUrl} className="w-full h-full object-cover opacity-70" alt="reel thumbnail" />
+                            ) : v.sourceType !== "EMBED" && v.url ? (
+                              <video src={v.url} muted playsInline preload="metadata" className="w-full h-full object-cover opacity-70" />
+                            ) : (
+                              <div className="w-full h-full bg-gradient-to-br from-slate-900 to-purple-950/40" />
+                            )}
+                            <span className="absolute inset-0 flex items-center justify-center text-xs text-white drop-shadow">▶</span>
                           </div>
                           <div className="flex-1 min-w-0 flex flex-col justify-between">
                             <div>
@@ -3768,38 +3826,81 @@ export const AdminWorkspace: React.FC = () => {
                   />
                 </div>
 
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   <label className="text-[10.5px] font-mono text-slate-450 block">Application Logo (Image URL or Upload)</label>
-                  <div className="flex items-center gap-2">
-                    {localSettings.logoUrl && (
-                      <img src={localSettings.logoUrl || undefined} className="w-10 h-10 rounded object-cover border border-slate-800 bg-slate-900" alt="logo preview" />
+                  <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                    {localSettings.logoUrl && !logoPreviewError ? (
+                      <img
+                        src={localSettings.logoUrl}
+                        onError={() => setLogoPreviewError(true)}
+                        className="w-10 h-10 rounded-lg object-contain border border-slate-800 bg-slate-950 p-0.5 shrink-0"
+                        alt="logo preview"
+                      />
+                    ) : (
+                      <div
+                        className={`w-10 h-10 rounded-lg border flex items-center justify-center font-space font-bold text-[10px] shrink-0 ${
+                          logoPreviewError
+                            ? "border-rose-500/40 bg-rose-950/30 text-rose-400"
+                            : "border-slate-800 bg-slate-950 text-purple-400"
+                        }`}
+                        title={logoPreviewError ? "Gambar logo gagal dimuat" : "Default monogram"}
+                      >
+                        {logoPreviewError ? "ERR" : (localSettings.logoText?.substring(0, 2) || "NV")}
+                      </div>
                     )}
                     <input 
                       type="text"
                       placeholder="Paste remote URL or upload file..."
                       value={localSettings.logoUrl || ""}
-                      onChange={(e) => setLocalSettings(prev => ({ ...prev, logoUrl: e.target.value }))}
-                      className="flex-1 bg-slate-900 border border-slate-850 rounded-xl py-3 px-4 text-slate-200 focus:outline-none focus:border-purple-650 text-sm"
+                      onChange={(e) => {
+                        setLogoPreviewError(false);
+                        setLocalSettings(prev => ({ ...prev, logoUrl: e.target.value }));
+                      }}
+                      className="flex-1 min-w-[160px] bg-slate-900 border border-slate-850 rounded-xl py-3 px-4 text-slate-200 focus:outline-none focus:border-purple-650 text-sm"
                     />
-                    <label className="bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 px-4 rounded-xl cursor-pointer text-xs font-bold transition-all whitespace-nowrap">
-                      Upload File
+                    <button
+                      type="button"
+                      onClick={handleApplyLogoUrl}
+                      disabled={isUploadingLogo}
+                      className="bg-purple-600/20 hover:bg-purple-600/35 text-purple-300 border border-purple-500/30 py-3 px-3.5 rounded-xl cursor-pointer text-xs font-bold transition-all whitespace-nowrap disabled:opacity-50"
+                      title="Simpan URL logo ke database"
+                    >
+                      Save Logo
+                    </button>
+                    <label className={`bg-slate-800 hover:bg-slate-700 text-slate-300 py-3 px-4 rounded-xl cursor-pointer text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${isUploadingLogo ? "opacity-50 pointer-events-none" : ""}`}>
+                      {isUploadingLogo ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Uploading...</span>
+                        </>
+                      ) : (
+                        <span>Upload File</span>
+                      )}
                       <input 
                         type="file" 
-                        accept="image/*" 
+                        accept="image/png,image/jpeg,image/jpg,image/webp,image/gif,image/svg+xml,.png,.jpg,.jpeg,.webp,.gif,.svg"
+                        disabled={isUploadingLogo}
                         className="hidden" 
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              setLocalSettings(prev => ({ ...prev, logoUrl: reader.result as string }));
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }} 
+                        onChange={handleLogoFileSelect} 
                       />
                     </label>
+                    {localSettings.logoUrl && (
+                      <button
+                        type="button"
+                        onClick={handleResetAppLogo}
+                        disabled={isUploadingLogo}
+                        className="bg-slate-900 hover:bg-rose-950/40 text-slate-400 hover:text-rose-400 border border-slate-800 hover:border-rose-500/30 py-3 px-3 rounded-xl cursor-pointer text-xs font-bold transition-all whitespace-nowrap disabled:opacity-50"
+                        title="Hapus logo kustom dan kembali ke monogram default"
+                      >
+                        Reset
+                      </button>
+                    )}
                   </div>
+                  {logoPreviewError && (
+                    <p className="text-[10px] text-rose-400 font-mono">
+                      Gambar dari URL tersebut gagal dimuat. Pastikan URL dapat diakses publik atau unggah file gambar langsung.
+                    </p>
+                  )}
                 </div>
 
                 <div className="space-y-1.5">
